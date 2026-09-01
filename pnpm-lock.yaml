@@ -73,34 +73,6 @@ importers:
         specifier: ^3.0.7
         version: 3.2.7(@types/node@22.20.1)(supports-color@7.2.0)
 
-  apps/dashboard:
-    dependencies:
-      '@infrawaste/analyzer':
-        specifier: workspace:*
-        version: link:../../packages/analyzer
-      '@infrawaste/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@infrawaste/cost-engine':
-        specifier: workspace:*
-        version: link:../../packages/cost-engine
-      express:
-        specifier: ^4.21.2
-        version: 4.22.2(supports-color@7.2.0)
-    devDependencies:
-      '@types/express':
-        specifier: ^5.0.0
-        version: 5.0.6
-      '@types/node':
-        specifier: ^22.13.5
-        version: 22.20.1
-      tsup:
-        specifier: ^8.3.6
-        version: 8.5.1(postcss@8.5.26)(supports-color@7.2.0)(typescript@5.9.3)
-      typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
-
   benchmarks/agent-overhead:
     dependencies:
       '@infrawaste/agent-node':

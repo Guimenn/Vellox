@@ -123,20 +123,28 @@ function handleOptimize(customTarget?: string) {
   const scannedQueries: Array<{ file: string; line: number; query: string }> = [];
   const generatedFixes: string[] = [];
   const codeHotspots: Array<{ file: string; line: number; type: string; snippet: string; fix: string }> = [];
+  const exposedSecrets: Array<{ file: string; line: number; type: string; secret: string; fix: string }> = [];
   const prismaSuggestions: Array<{ model: string; field: string }> = [];
+
+  function redactSecret(secret: string): string {
+    if (!secret || secret.length <= 8) return '****';
+    const prefix = secret.slice(0, 5);
+    const suffix = secret.slice(-4);
+    return `${prefix}...******...${suffix}`;
+  }
 
   function walkDir(dir: string, depth = 0) {
     if (depth > 6) return;
     try {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build') {
+        if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build' || entry.name === '.git') {
           continue;
         }
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           walkDir(fullPath, depth + 1);
-        } else if (/\.(sql|prisma|ts|js|py)$/i.test(entry.name)) {
+        } else if (/\.(sql|prisma|ts|js|py|env|json|yaml|yml|toml)$/i.test(entry.name) || entry.name.startsWith('.env')) {
           foundFiles.push(fullPath);
         }
       }
@@ -277,6 +285,105 @@ function handleOptimize(customTarget?: string) {
           }
         }
       });
+      // 5. Scan for Exposed API Keys & Hardcoded Credentials
+      lines.forEach((lineText, idx) => {
+        if (lineText.includes('@vellox-ignore') || lineText.includes('placeholder') || lineText.includes('your-key')) return;
+
+        // a) Google Gemini / Maps / Cloud API Key: AIzaSy... (39 chars)
+        const geminiMatch = /\b(AIzaSy[a-zA-Z0-9_-]{33})\b/.exec(lineText);
+        if (geminiMatch) {
+          exposedSecrets.push({
+            file: path.relative(cwd, file),
+            line: idx + 1,
+            type: 'Google Gemini / Cloud API Key',
+            secret: redactSecret(geminiMatch[1]!),
+            fix: 'Move API Key to .env environment variable and add .env to .gitignore'
+          });
+        }
+
+        // b) OpenAI Key: sk-... or sk-proj-...
+        const openaiMatch = /\b(sk-(?:proj-)?[a-zA-Z0-9_-]{20,})\b/.exec(lineText);
+        if (openaiMatch) {
+          exposedSecrets.push({
+            file: path.relative(cwd, file),
+            line: idx + 1,
+            type: 'OpenAI Secret API Key',
+            secret: redactSecret(openaiMatch[1]!),
+            fix: 'Revoke key immediately in OpenAI dashboard and move to OPENAI_API_KEY in .env'
+          });
+        }
+
+        // c) Anthropic Claude Key: sk-ant-...
+        const anthropicMatch = /\b(sk-ant-[a-zA-Z0-9_-]{20,})\b/.exec(lineText);
+        if (anthropicMatch) {
+          exposedSecrets.push({
+            file: path.relative(cwd, file),
+            line: idx + 1,
+            type: 'Anthropic Claude API Key',
+            secret: redactSecret(anthropicMatch[1]!),
+            fix: 'Move secret to ANTHROPIC_API_KEY environment variable'
+          });
+        }
+
+        // d) AWS Access Key ID: AKIA...
+        const awsMatch = /\b(AKIA[0-9A-Z]{16})\b/.exec(lineText);
+        if (awsMatch) {
+          exposedSecrets.push({
+            file: path.relative(cwd, file),
+            line: idx + 1,
+            type: 'AWS Access Key ID',
+            secret: redactSecret(awsMatch[1]!),
+            fix: 'Use AWS IAM Roles or AWS_ACCESS_KEY_ID in .env'
+          });
+        }
+
+        // e) Stripe Secret Key: sk_live_... / rk_live_...
+        const stripeMatch = /\b((?:sk|rk)_live_[0-9a-zA-Z]{24})\b/.exec(lineText);
+        if (stripeMatch) {
+          exposedSecrets.push({
+            file: path.relative(cwd, file),
+            line: idx + 1,
+            type: 'Stripe Live Secret Key (Financial Risk)',
+            secret: redactSecret(stripeMatch[1]!),
+            fix: 'CRITICAL: Revoke live key in Stripe Dashboard and move to STRIPE_SECRET_KEY'
+          });
+        }
+
+        // f) GitHub Personal Access Token: ghp_...
+        const ghMatch = /\b(ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{22,})\b/.exec(lineText);
+        if (ghMatch) {
+          exposedSecrets.push({
+            file: path.relative(cwd, file),
+            line: idx + 1,
+            type: 'GitHub Personal Access Token',
+            secret: redactSecret(ghMatch[1]!),
+            fix: 'Revoke token on GitHub Settings and move to GITHUB_TOKEN in .env'
+          });
+        }
+
+        // g) Database URI with Hardcoded Password
+        const dbUriMatch = /\b((?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^:\s'"]+:([^@\s'"]+)@[^\s"']+)\b/.exec(lineText);
+        if (dbUriMatch && !lineText.includes('user:password') && !lineText.includes('root:password') && !lineText.includes('localhost') && dbUriMatch[2] !== 'password' && dbUriMatch[2] !== 'secret') {
+          exposedSecrets.push({
+            file: path.relative(cwd, file),
+            line: idx + 1,
+            type: 'Plaintext Database Connection String with Credentials',
+            secret: redactSecret(dbUriMatch[1]!),
+            fix: 'Store DATABASE_URL in .env and use environment variable injection'
+          });
+        }
+
+        // h) RSA/Private Key
+        if (/-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/.test(lineText)) {
+          exposedSecrets.push({
+            file: path.relative(cwd, file),
+            line: idx + 1,
+            type: 'Unencrypted Private Key Certificate',
+            secret: '-----BEGIN PRIVATE KEY-----...',
+            fix: 'Never commit private keys to repository. Use Secrets Manager or .pem in .gitignore'
+          });
+        }
+      });
     } catch {}
   }
 
@@ -321,11 +428,22 @@ ${uniqueFixes.length > 0 ? uniqueFixes.join('\n\n') : '-- No critical missing in
   console.log(`   Vellox NEVER alters your database or codebase directly.`);
   console.log(`   It only generates advisory suggestions and human-reviewable scripts.\n`);
 
-  console.log(`📊 OPTIMIZATION SCAN COMPLETE:`);
+  console.log(`📊 OPTIMIZATION & SECURITY SCAN COMPLETE:`);
   console.log(`  ├─ Source Code Files Analyzed:  ${foundFiles.length}`);
   console.log(`  ├─ Code Logic Hotspots (Loops): ${codeHotspots.length}`);
+  console.log(`  ├─ Exposed Keys & Secrets:      ${exposedSecrets.length}`);
   console.log(`  ├─ Database Index Fixes Found:  ${uniqueFixes.length}`);
   console.log(`  └─ Generated Review File:       ${path.relative(cwd, migrationPath)}`);
+
+  if (exposedSecrets.length > 0) {
+    console.log(`\n🚨 CRITICAL SECURITY ALERT (EXPOSED KEYS & CREDENTIALS DETECTED):`);
+    for (let i = 0; i < Math.min(exposedSecrets.length, 6); i++) {
+      const s = exposedSecrets[i]!;
+      console.log(`  ${i + 1}. 🔴 [${s.type}] in ${s.file}:${s.line}`);
+      console.log(`     ├─ Secret: ${s.secret}`);
+      console.log(`     └─ Action: ${s.fix}\n`);
+    }
+  }
 
   if (codeHotspots.length > 0) {
     console.log(`\n🚨 CRITICAL APPLICATION CODE HOTSPOTS (LOOPS & MEMORY):`);
