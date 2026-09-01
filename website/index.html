@@ -6,10 +6,10 @@
   <title>Vellox — Ultra-Fast Database & Application Performance Intelligence Engine</title>
   <meta name="description" content="Vellox is an ultra-fast developer tool and zero-config CLI that detects database bottlenecks, N+1 async loops, unindexed foreign keys, and exposed secrets in seconds." />
 
-  <!-- Google Fonts -->
+  <!-- Premium Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
   <!-- GSAP & ScrollTrigger -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -17,21 +17,23 @@
 
   <style>
     :root {
-      --bg: #030712;
-      --bg-surface: #0b0f19;
-      --card-bg: rgba(15, 23, 42, 0.45);
-      --card-border: rgba(255, 255, 255, 0.08);
-      --card-border-hover: rgba(56, 189, 248, 0.4);
-      --text-main: #f8fafc;
+      --bg: #030508;
+      --bg-surface: #070b14;
+      --card-bg: rgba(10, 15, 29, 0.6);
+      --card-bg-hover: rgba(16, 24, 46, 0.8);
+      --card-border: rgba(255, 255, 255, 0.07);
+      --card-border-hover: rgba(56, 189, 248, 0.45);
+      --text: #f8fafc;
       --text-muted: #94a3b8;
       --text-dim: #64748b;
       --cyan: #38bdf8;
-      --cyan-glow: rgba(56, 189, 248, 0.25);
+      --cyan-glow: rgba(56, 189, 248, 0.3);
       --violet: #818cf8;
       --purple: #c084fc;
       --emerald: #34d399;
       --rose: #fb7185;
       --amber: #fbbf24;
+      --titanium: #e2e8f0;
     }
 
     * {
@@ -40,9 +42,13 @@
       padding: 0;
     }
 
+    html {
+      scroll-behavior: smooth;
+    }
+
     body {
       background-color: var(--bg);
-      color: var(--text-main);
+      color: var(--text);
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       line-height: 1.5;
       overflow-x: hidden;
@@ -50,8 +56,8 @@
       position: relative;
     }
 
-    /* Ambient Dynamic Glowing Background */
-    .ambient-glow {
+    /* Ambient Glowing Aurora Background */
+    .aurora-bg {
       position: fixed;
       top: 0;
       left: 0;
@@ -60,40 +66,41 @@
       pointer-events: none;
       z-index: 0;
       background: 
-        radial-gradient(ellipse 90% 55% at 50% -15%, rgba(56, 189, 248, 0.18), transparent 70%),
-        radial-gradient(ellipse 65% 45% at 90% 40%, rgba(129, 140, 248, 0.1), transparent 70%),
-        radial-gradient(ellipse 55% 35% at 10% 70%, rgba(52, 211, 153, 0.07), transparent 70%);
+        radial-gradient(ellipse 90% 55% at 50% -12%, rgba(56, 189, 248, 0.18), transparent 70%),
+        radial-gradient(ellipse 65% 45% at 90% 35%, rgba(129, 140, 248, 0.12), transparent 70%),
+        radial-gradient(ellipse 55% 40% at 10% 65%, rgba(52, 211, 153, 0.08), transparent 70%);
+      opacity: 0.9;
     }
 
-    .matrix-grid {
+    .grid-overlay {
       position: absolute;
       inset: 0;
       background-image: 
         linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-      background-size: 48px 48px;
+      background-size: 56px 56px;
       pointer-events: none;
-      mask-image: radial-gradient(ellipse at 50% 20%, #000 45%, transparent 85%);
-      -webkit-mask-image: radial-gradient(ellipse at 50% 20%, #000 45%, transparent 85%);
+      mask-image: radial-gradient(ellipse at 50% 20%, #000 40%, transparent 85%);
+      -webkit-mask-image: radial-gradient(ellipse at 50% 20%, #000 40%, transparent 85%);
       z-index: 1;
     }
 
     .container {
-      max-width: 1220px;
+      max-width: 1240px;
       margin: 0 auto;
       padding: 0 24px;
       position: relative;
       z-index: 2;
     }
 
-    /* Header & Navigation */
+    /* Navbar */
     header {
       position: sticky;
       top: 0;
       z-index: 100;
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      background: rgba(3, 7, 18, 0.75);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      background: rgba(3, 5, 8, 0.8);
       border-bottom: 1px solid var(--card-border);
       transition: all 0.3s;
     }
@@ -102,7 +109,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 72px;
+      height: 74px;
     }
 
     .brand {
@@ -114,16 +121,16 @@
     }
 
     .brand-img {
-      width: 34px;
-      height: 34px;
-      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
       border: 1px solid rgba(255, 255, 255, 0.15);
-      box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
+      box-shadow: 0 0 24px rgba(56, 189, 248, 0.3);
     }
 
     .brand-title {
-      font-size: 20px;
-      font-weight: 800;
+      font-size: 21px;
+      font-weight: 900;
       letter-spacing: -0.04em;
       color: #fff;
     }
@@ -131,7 +138,7 @@
     .nav-links {
       display: flex;
       align-items: center;
-      gap: 28px;
+      gap: 32px;
     }
 
     .nav-links a {
@@ -157,9 +164,9 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 9px 18px;
-      border-radius: 8px;
-      font-size: 13.5px;
+      padding: 10px 20px;
+      border-radius: 9px;
+      font-size: 14px;
       font-weight: 600;
       text-decoration: none;
       cursor: pointer;
@@ -171,13 +178,13 @@
     .btn-primary {
       background: #ffffff;
       color: #000000;
-      box-shadow: 0 0 25px rgba(255, 255, 255, 0.2);
+      box-shadow: 0 0 30px rgba(255, 255, 255, 0.25);
     }
 
     .btn-primary:hover {
       background: #f1f5f9;
       transform: translateY(-2px);
-      box-shadow: 0 0 35px rgba(255, 255, 255, 0.35);
+      box-shadow: 0 0 45px rgba(255, 255, 255, 0.45);
     }
 
     .btn-secondary {
@@ -194,7 +201,7 @@
 
     /* Hero Section */
     .hero {
-      padding: 96px 0 64px;
+      padding: 100px 0 70px;
       text-align: center;
       position: relative;
     }
@@ -203,77 +210,87 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 16px;
+      padding: 6px 18px;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 9999px;
       font-size: 13px;
-      font-weight: 500;
-      color: #cbd5e1;
-      margin-bottom: 28px;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 30px;
       text-decoration: none;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-      opacity: 0;
-      transform: translateY(20px);
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(12px);
     }
 
     .hero-badge .dot {
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       background: var(--cyan);
       border-radius: 50%;
-      box-shadow: 0 0 10px var(--cyan);
+      box-shadow: 0 0 12px var(--cyan);
     }
 
     .hero h1 {
-      font-size: clamp(40px, 6.2vw, 76px);
+      font-size: clamp(42px, 6.5vw, 80px);
       font-weight: 900;
-      line-height: 1.04;
+      line-height: 1.02;
       letter-spacing: -0.045em;
       margin-bottom: 24px;
-      max-width: 980px;
+      max-width: 1000px;
       margin-left: auto;
       margin-right: auto;
       background: linear-gradient(180deg, #ffffff 40%, #94a3b8 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      opacity: 0;
-      transform: translateY(30px);
     }
 
     .hero p {
-      font-size: clamp(16px, 1.8vw, 19px);
+      font-size: clamp(16px, 1.8vw, 19.5px);
       color: var(--text-muted);
-      max-width: 700px;
+      max-width: 720px;
       margin: 0 auto 36px;
       line-height: 1.6;
-      opacity: 0;
-      transform: translateY(30px);
+    }
+
+    .hero-cli-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 8px 18px;
+      margin-bottom: 36px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .hero-cli-code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--cyan);
     }
 
     .hero-actions {
       display: flex;
       justify-content: center;
-      gap: 14px;
-      margin-bottom: 54px;
-      opacity: 0;
-      transform: translateY(30px);
+      gap: 16px;
+      margin-bottom: 60px;
     }
 
     /* 3D Interactive Terminal Window */
     .terminal-wrap {
-      max-width: 920px;
+      max-width: 960px;
       margin: 0 auto;
       perspective: 1200px;
-      opacity: 0;
-      transform: translateY(40px);
     }
 
     .terminal-card {
-      background: #040813;
+      background: #040711;
       border: 1px solid var(--card-border);
-      border-radius: 18px;
-      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.85), 0 0 60px rgba(56, 189, 248, 0.12);
+      border-radius: 20px;
+      box-shadow: 0 35px 100px rgba(0, 0, 0, 0.9), 0 0 70px rgba(56, 189, 248, 0.12);
       overflow: hidden;
       text-align: left;
       transition: border-color 0.3s, transform 0.1s ease-out;
@@ -288,7 +305,7 @@
     .terminal-head {
       background: rgba(255, 255, 255, 0.025);
       border-bottom: 1px solid var(--card-border);
-      padding: 14px 20px;
+      padding: 14px 22px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -300,8 +317,8 @@
     }
 
     .w-dot {
-      width: 11px;
-      height: 11px;
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
     }
     .w-1 { background: #ff5f56; }
@@ -319,8 +336,8 @@
       color: var(--text-dim);
       font-family: 'JetBrains Mono', monospace;
       font-size: 12px;
-      padding: 5px 12px;
-      border-radius: 6px;
+      padding: 6px 14px;
+      border-radius: 7px;
       cursor: pointer;
       transition: all 0.2s;
     }
@@ -332,12 +349,12 @@
     }
 
     .terminal-content {
-      padding: 24px;
+      padding: 26px;
       font-family: 'JetBrains Mono', monospace;
       font-size: 13px;
       line-height: 1.7;
       color: #cbd5e1;
-      min-height: 310px;
+      min-height: 330px;
     }
 
     .cmd-bar {
@@ -346,9 +363,9 @@
       justify-content: space-between;
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 10px 16px;
-      margin-bottom: 20px;
+      border-radius: 9px;
+      padding: 10px 18px;
+      margin-bottom: 22px;
     }
 
     .cmd-text {
@@ -360,7 +377,7 @@
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.12);
       color: #f8fafc;
-      padding: 4px 12px;
+      padding: 4px 14px;
       border-radius: 6px;
       font-size: 12px;
       cursor: pointer;
@@ -372,7 +389,7 @@
       color: #000;
     }
 
-    /* Proof SLA Stats */
+    /* SLA Proof Row */
     .sla-section {
       padding: 64px 0;
       border-top: 1px solid var(--card-border);
@@ -388,7 +405,7 @@
     }
 
     .sla-val {
-      font-size: 44px;
+      font-size: 46px;
       font-weight: 900;
       letter-spacing: -0.04em;
       color: #fff;
@@ -401,14 +418,10 @@
       font-weight: 500;
     }
 
-    /* Prisma & Schema Section */
-    .prisma-showcase {
-      padding: 96px 0;
-    }
-
+    /* Section Headers */
     .section-head {
       text-align: center;
-      margin-bottom: 54px;
+      margin-bottom: 56px;
     }
 
     .section-badge {
@@ -416,13 +429,13 @@
       font-size: 11.5px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.09em;
+      letter-spacing: 0.1em;
       color: var(--cyan);
       margin-bottom: 12px;
     }
 
     .section-head h2 {
-      font-size: clamp(32px, 4.5vw, 50px);
+      font-size: clamp(34px, 4.5vw, 52px);
       font-weight: 800;
       letter-spacing: -0.04em;
       margin-bottom: 14px;
@@ -432,48 +445,103 @@
     .section-head p {
       color: var(--text-muted);
       font-size: 16px;
-      max-width: 660px;
+      max-width: 680px;
       margin: 0 auto;
     }
 
-    .prisma-split {
+    /* Bento Grid with Spotlight */
+    .bento-container {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      align-items: stretch;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 22px;
     }
 
-    @media (max-width: 880px) {
-      .prisma-split { grid-template-columns: 1fr; }
+    .bento-item {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 34px;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    .bento-item::before {
+      content: '';
+      position: absolute;
+      top: var(--mouse-y, -1000px);
+      left: var(--mouse-x, -1000px);
+      width: 450px;
+      height: 450px;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.16), transparent 70%);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 0;
+    }
+
+    .bento-item:hover::before {
+      opacity: 1;
+    }
+
+    .bento-item:hover {
+      background: var(--card-bg-hover);
+      border-color: var(--card-border-hover);
+      transform: translateY(-3px);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+    }
+
+    .c-12 { grid-column: span 12; }
+    .c-8 { grid-column: span 8; }
+    .c-6 { grid-column: span 6; }
+    .c-4 { grid-column: span 4; }
+
+    @media (max-width: 920px) {
+      .c-8, .c-6, .c-4 { grid-column: span 12; }
       .nav-links { display: none; }
     }
 
+    .b-tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--cyan);
+      margin-bottom: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .bento-item h3 {
+      font-size: 23px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 10px;
+      color: #fff;
+      position: relative;
+      z-index: 1;
+    }
+
+    .bento-item p {
+      font-size: 14.5px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      position: relative;
+      z-index: 1;
+    }
+
     .code-box {
-      background: var(--card-bg);
+      background: #040814;
       border: 1px solid var(--card-border);
-      border-radius: 16px;
-      padding: 24px;
+      border-radius: 14px;
+      padding: 20px;
       position: relative;
       overflow: hidden;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-    }
-
-    .code-box-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--card-border);
-    }
-
-    .filename-tag {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12.5px;
-      color: var(--cyan);
-      font-weight: 600;
+      margin-top: 20px;
     }
 
     .schema-code {
@@ -496,7 +564,6 @@
       padding: 2px 8px;
       margin: 4px -8px;
       border-radius: 4px;
-      transition: all 0.3s;
     }
 
     .diff-warn {
@@ -507,6 +574,38 @@
       padding: 2px 8px;
       margin: 4px -8px;
       border-radius: 4px;
+    }
+
+    /* Prisma Showcase Split */
+    .prisma-showcase {
+      padding: 96px 0;
+    }
+
+    .prisma-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    @media (max-width: 880px) {
+      .prisma-split { grid-template-columns: 1fr; }
+    }
+
+    .code-box-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .filename-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      color: var(--cyan);
+      font-weight: 600;
     }
 
     .interactive-toggle-btn {
@@ -526,106 +625,22 @@
       color: #000;
     }
 
-    /* Bento Grid Architecture with Spotlight */
-    .bento-container {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 20px;
-    }
-
-    .bento-item {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 18px;
-      padding: 32px;
-      position: relative;
-      overflow: hidden;
-      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-    }
-
-    .bento-item::before {
-      content: '';
-      position: absolute;
-      top: var(--mouse-y, -1000px);
-      left: var(--mouse-x, -1000px);
-      width: 400px;
-      height: 400px;
-      background: radial-gradient(circle, rgba(56, 189, 248, 0.15), transparent 70%);
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.3s;
-      z-index: 0;
-    }
-
-    .bento-item:hover::before {
-      opacity: 1;
-    }
-
-    .bento-item:hover {
-      background: rgba(18, 28, 51, 0.6);
-      border-color: var(--card-border-hover);
-      transform: translateY(-3px);
-      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);
-    }
-
-    .c-12 { grid-column: span 12; }
-    .c-8 { grid-column: span 8; }
-    .c-6 { grid-column: span 6; }
-    .c-4 { grid-column: span 4; }
-
-    @media (max-width: 900px) {
-      .c-8, .c-6, .c-4 { grid-column: span 12; }
-    }
-
-    .b-tag {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--cyan);
-      margin-bottom: 12px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .bento-item h3 {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.03em;
-      margin-bottom: 10px;
-      color: #fff;
-      position: relative;
-      z-index: 1;
-    }
-
-    .bento-item p {
-      font-size: 14.5px;
-      color: var(--text-muted);
-      line-height: 1.6;
-      position: relative;
-      z-index: 1;
-    }
-
     /* Playground */
     .sim-panel {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
-      border-radius: 18px;
-      padding: 32px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      border-radius: 20px;
+      padding: 34px;
+      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
     }
 
     .presets-row {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
-      margin-bottom: 18px;
+      margin-bottom: 20px;
     }
 
     .preset-chip {
@@ -694,10 +709,10 @@
     .slider-card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
-      border-radius: 18px;
-      padding: 32px;
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      border-radius: 20px;
+      padding: 34px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
     }
 
     .slider-item {
@@ -734,11 +749,11 @@
     .roi-result {
       background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(56, 189, 248, 0.05));
       border: 1px solid var(--card-border);
-      border-radius: 18px;
+      border-radius: 20px;
       padding: 40px;
       text-align: center;
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
     }
 
     .roi-amount {
@@ -750,38 +765,117 @@
       text-shadow: 0 0 30px rgba(52, 211, 153, 0.35);
     }
 
-    /* Footer */
+    /* ==========================================================================
+       GIANT 100% WIDTH BRUTALIST LUXURY FOOTER
+       ========================================================================== */
     footer {
       border-top: 1px solid var(--card-border);
-      padding: 70px 0 40px;
-      background: #02040a;
-      text-align: center;
-      font-size: 14px;
-      color: var(--text-muted);
+      padding: 100px 0 30px;
+      background: #020408;
+      position: relative;
+      overflow: hidden;
     }
 
-    .footer-links {
-      display: flex;
-      justify-content: center;
-      gap: 24px;
-      margin-bottom: 24px;
+    .footer-beam {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+      box-shadow: 0 0 25px var(--cyan);
     }
 
-    .footer-links a {
+    .footer-nav-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 40px;
+      margin-bottom: 80px;
+    }
+
+    @media (max-width: 768px) {
+      .footer-nav-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .footer-col h4 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #fff;
+      margin-bottom: 18px;
+    }
+
+    .footer-col ul {
+      list-style: none;
+    }
+
+    .footer-col ul li {
+      margin-bottom: 12px;
+    }
+
+    .footer-col ul li a {
       color: var(--text-muted);
       text-decoration: none;
+      font-size: 14px;
       transition: color 0.2s;
     }
 
-    .footer-links a:hover {
-      color: #fff;
+    .footer-col ul li a:hover {
+      color: var(--cyan);
+    }
+
+    /* Giant 100% Width Typography Watermark */
+    .giant-footer-brand {
+      width: 100vw;
+      margin-left: calc(-50vw + 50%);
+      text-align: center;
+      user-select: none;
+      pointer-events: none;
+      line-height: 0.82;
+      padding-top: 20px;
+      padding-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .giant-brand-text {
+      font-size: clamp(70px, 20vw, 290px);
+      font-weight: 900;
+      letter-spacing: -0.06em;
+      text-transform: uppercase;
+      display: block;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.01) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 100px rgba(56, 189, 248, 0.1);
+    }
+
+    .footer-bottom-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 30px;
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 13.5px;
+      color: var(--text-dim);
+    }
+
+    @media (max-width: 600px) {
+      .footer-bottom-bar {
+        flex-direction: column;
+        gap: 12px;
+        text-align: center;
+      }
     }
   </style>
 </head>
 <body>
 
-  <div class="ambient-glow"></div>
-  <div class="matrix-grid"></div>
+  <div class="aurora-bg"></div>
+  <div class="grid-overlay"></div>
 
   <!-- Header -->
   <header>
@@ -793,7 +887,7 @@
         </a>
 
         <nav class="nav-links">
-          <a href="#features">Features</a>
+          <a href="#features">Architecture</a>
           <a href="#prisma">Prisma Engine</a>
           <a href="#playground">Playground</a>
           <a href="#roi">FinOps Calculator</a>
@@ -821,8 +915,8 @@
       </a>
 
       <h1 class="hero-title">
-        The database intelligence engine <br />
-        for high-scale engineering.
+        The Zero-Overhead <br />
+        Database Intelligence Engine.
       </h1>
 
       <p class="hero-desc">
@@ -830,11 +924,16 @@
         Calculates cloud cost savings with zero runtime overhead and zero table locks.
       </p>
 
+      <div class="hero-cli-bar">
+        <span class="hero-cli-code">$ npx vellox</span>
+        <button class="copy-chip" onclick="copyHeroCli()">Copy</button>
+      </div>
+
       <div class="hero-actions">
-        <a href="#playground" class="btn btn-primary" style="padding: 13px 28px; font-size: 15px;">
+        <a href="#playground" class="btn btn-primary" style="padding: 13px 30px; font-size: 15px;">
           Try Live Playground
         </a>
-        <a href="https://github.com/Guimenn/vellox" target="_blank" class="btn btn-secondary" style="padding: 13px 24px; font-size: 15px;">
+        <a href="https://github.com/Guimenn/vellox" target="_blank" class="btn btn-secondary" style="padding: 13px 26px; font-size: 15px;">
           View Documentation
         </a>
       </div>
@@ -902,7 +1001,7 @@
     <div class="container">
       <div class="sla-grid">
         <div>
-          <div class="sla-val count-val" data-target="0.00">+0.00 ms</div>
+          <div class="sla-val">+0.00 ms</div>
           <div class="sla-label">P50 / P95 Latency SLA</div>
         </div>
         <div>
@@ -910,7 +1009,7 @@
           <div class="sla-label">RSS Memory Guardrail</div>
         </div>
         <div>
-          <div class="sla-val count-val" data-target="64">64 / 64</div>
+          <div class="sla-val">64 / 64</div>
           <div class="sla-label">Automated Tests (100% Pass)</div>
         </div>
         <div>
@@ -938,7 +1037,7 @@
           <p>
             Detects sequential database queries nested within <code>for</code>, <code>while</code>, <code>.map(async)</code>, and <code>.forEach(async)</code> loops before they exhaust database connection pools.
           </p>
-          <div class="code-box" style="margin-top: 20px; padding: 16px; background: #030611;">
+          <div class="code-box">
             <pre class="schema-code"><code><span class="diff-warn">- for (const order of orders) { await db.query('SELECT * FROM items WHERE id = $1', [order.id]); }</span>
 <span class="diff-add">+ const items = await db.query('SELECT * FROM items WHERE id = ANY($1)', [orderIds]); // 84x faster</span></code></pre>
           </div>
@@ -969,7 +1068,7 @@
           <p>
             Ingest raw execution plans (<code>EXPLAIN ANALYZE, BUFFERS, FORMAT JSON</code>) to instantly compute Buffer Cache Hit Ratios, disk sort spills, and sequential table scan penalties.
           </p>
-          <div class="code-box" style="margin-top: 20px; padding: 16px; background: #030611;">
+          <div class="code-box">
             <pre class="schema-code"><code><span class="type">Buffer Cache Hit Ratio: 98.4%</span> (4,820 shared hits / 78 disk reads)
 <span class="diff-warn">⚠️  Sequential Table Scan on 'products' (1.8M rows in 240ms) &rarr; Fix: idx_products_status_tags</span></code></pre>
           </div>
@@ -1000,7 +1099,7 @@
           <p>
             Scans your entire codebase and configuration files for exposed credentials — including Google Gemini, OpenAI, Anthropic Claude, AWS, Stripe, GitHub Tokens, and plaintext database URIs — with instant redaction and actionable remediation.
           </p>
-          <div class="code-box" style="margin-top: 20px; padding: 16px; background: #030611;">
+          <div class="code-box">
             <pre class="schema-code"><code><span class="diff-warn">🚨 CRITICAL SECURITY ALERT: [Google Gemini API Key] in .env:1 &rarr; AIzaS...******...xpHE</span>
 <span class="diff-add">🛡️  Action: Automated terminal masking active. Move secret to environment variable and add .env to .gitignore</span></code></pre>
           </div>
@@ -1020,7 +1119,7 @@
 
       <div class="prisma-split">
         <!-- Prisma Schema Box -->
-        <div class="code-box">
+        <div class="code-box" style="margin-top: 0; padding: 24px;">
           <div class="code-box-header">
             <span class="filename-tag">schema.prisma</span>
             <button class="interactive-toggle-btn" id="toggle-index-btn" onclick="togglePrismaIndex()">
@@ -1038,7 +1137,7 @@
         </div>
 
         <!-- Safe Migration SQL Box -->
-        <div class="code-box">
+        <div class="code-box" style="margin-top: 0; padding: 24px;">
           <div class="code-box-header">
             <span class="filename-tag">migrations/vellox_optimizations.sql</span>
             <span style="font-size: 11.5px; color: var(--emerald); font-weight: 600;">Zero Downtime</span>
@@ -1136,18 +1235,60 @@
     </div>
   </section>
 
-  <!-- Footer -->
+  <!-- Giant Luxury Brutalist Footer -->
   <footer>
+    <div class="footer-beam"></div>
     <div class="container">
-      <div class="footer-links">
-        <a href="https://github.com/Guimenn/vellox" target="_blank">GitHub Repository</a>
-        <a href="https://www.npmjs.com/package/vellox" target="_blank">NPM Package</a>
-        <a href="https://github.com/Guimenn/vellox/blob/main/LICENSE" target="_blank">License & Legal</a>
+      <div class="footer-nav-grid">
+        <div class="footer-col">
+          <div class="brand" style="margin-bottom: 16px;">
+            <img src="public/logo.jpg" alt="Vellox Logo" class="brand-img" />
+            <span class="brand-title">VELLOX</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 14px; line-height: 1.6; max-width: 320px;">
+            The ultra-fast, zero-overhead database and application performance intelligence engine. Engineered for high-scale microservices.
+          </p>
+        </div>
+
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="#features">Architecture</a></li>
+            <li><a href="#prisma">Prisma Engine</a></li>
+            <li><a href="#playground">Playground Sandbox</a></li>
+            <li><a href="#roi">FinOps Calculator</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Ecosystem</h4>
+          <ul>
+            <li><a href="https://www.npmjs.com/package/vellox" target="_blank">NPM Registry</a></li>
+            <li><a href="https://github.com/Guimenn/vellox" target="_blank">GitHub Repository</a></li>
+            <li><a href="https://github.com/Guimenn/vellox/actions" target="_blank">CI/CD Workflows</a></li>
+            <li><a href="https://github.com/Guimenn/vellox/releases" target="_blank">Changelog</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Legal & Author</h4>
+          <ul>
+            <li><a href="https://github.com/Guimenn/vellox/blob/main/LICENSE" target="_blank">MIT License</a></li>
+            <li><a href="https://github.com/Guimenn" target="_blank">Guilherme Men</a></li>
+            <li><a href="https://github.com/Guimenn/vellox/issues" target="_blank">Report Issue</a></li>
+          </ul>
+        </div>
       </div>
-      <p>Copyright &copy; 2026 <strong>Guilherme Men</strong>. All Rights Reserved.</p>
-      <p style="margin-top: 8px; font-size: 12px; color: var(--text-dim);">
-        Vellox &mdash; Ultra-Fast Database & Application Performance Intelligence Engine
-      </p>
+
+      <!-- MASSIVE 100% WIDTH "VELLOX" BRANDING WATERMARK -->
+      <div class="giant-footer-brand">
+        <span class="giant-brand-text">VELLOX</span>
+      </div>
+
+      <div class="footer-bottom-bar">
+        <p>Copyright &copy; 2026 <strong>Guilherme Men</strong>. All rights reserved.</p>
+        <p>Designed for mission-critical low-latency production infrastructure.</p>
+      </div>
     </div>
   </footer>
 
@@ -1156,15 +1297,16 @@
     document.addEventListener("DOMContentLoaded", () => {
       gsap.registerPlugin(ScrollTrigger);
 
-      // Hero Timeline
+      // Hero Entrance Timeline
       const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-      tl.to(".hero-badge", { opacity: 1, y: 0, duration: 0.7 })
-        .to(".hero h1", { opacity: 1, y: 0, duration: 0.8 }, "-=0.4")
-        .to(".hero p", { opacity: 1, y: 0, duration: 0.8 }, "-=0.5")
-        .to(".hero-actions", { opacity: 1, y: 0, duration: 0.7 }, "-=0.5")
-        .to(".terminal-wrap", { opacity: 1, y: 0, duration: 0.9 }, "-=0.4");
+      tl.from(".hero-badge", { opacity: 0, y: 20, duration: 0.7 })
+        .from(".hero h1", { opacity: 0, y: 30, duration: 0.8 }, "-=0.4")
+        .from(".hero p", { opacity: 0, y: 30, duration: 0.8 }, "-=0.5")
+        .from(".hero-cli-bar", { opacity: 0, y: 20, duration: 0.6 }, "-=0.5")
+        .from(".hero-actions", { opacity: 0, y: 20, duration: 0.6 }, "-=0.4")
+        .from(".terminal-wrap", { opacity: 0, y: 40, duration: 0.9 }, "-=0.4");
 
-      // Bento Cards Entrance with ScrollTrigger
+      // Bento Cards Entrance
       gsap.utils.toArray(".gsap-card").forEach((card) => {
         gsap.from(card, {
           scrollTrigger: {
@@ -1217,7 +1359,7 @@
         });
       }
 
-      // Default Playground
+      // Default Playground & FinOps
       pickPreset('n1');
       updateFinOps();
     });
@@ -1317,6 +1459,13 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_tenant_email ON users (tenant_
       setTimeout(() => { btn.innerText = "Copy"; }, 2000);
     }
 
+    function copyHeroCli() {
+      navigator.clipboard.writeText("npx vellox");
+      const btn = event.target;
+      btn.innerText = "Copied!";
+      setTimeout(() => { btn.innerText = "Copy"; }, 2000);
+    }
+
     // Prisma Index Toggle
     let isIndexed = false;
     function togglePrismaIndex() {
@@ -1395,7 +1544,6 @@ const items = await db.query('SELECT * FROM order_items WHERE order_id = ANY($1)
       document.getElementById("services-txt").innerText = `${services} Services`;
       document.getElementById("queries-txt").innerText = `${queries.toFixed(1)} Million / day`;
 
-      // Calculation formula based on query volume and spend
       const wasteFactor = Math.min(0.38, 0.12 + (services * 0.005) + (queries * 0.008));
       const monthlySavings = spend * wasteFactor;
 
