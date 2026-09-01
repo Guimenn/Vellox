@@ -108,6 +108,40 @@ function handleDiscover() {
   console.log('');
 }
 
+function detectDatabasePresence(cwd: string): { hasDb: boolean; reason: string } {
+  const pkgPath = path.join(cwd, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+      const dbDeps = ['prisma', '@prisma/client', 'pg', 'postgres', 'mysql', 'mysql2', 'typeorm', 'sequelize', 'mongoose', 'knex', 'drizzle-orm', 'ioredis', 'redis', 'mongodb', 'oracledb'];
+      const matched = dbDeps.filter(d => allDeps[d]);
+      if (matched.length > 0) return { hasDb: true, reason: `Dependencies: ${matched.join(', ')}` };
+    } catch {}
+  }
+
+  for (const pyFile of ['requirements.txt', 'pyproject.toml', 'Pipfile']) {
+    const p = path.join(cwd, pyFile);
+    if (fs.existsSync(p)) {
+      try {
+        const text = fs.readFileSync(p, 'utf-8');
+        if (/sqlalchemy|psycopg|asyncpg|pymongo|tortoise|databases|redis|pymysql/i.test(text)) {
+          return { hasDb: true, reason: `Python database drivers in ${pyFile}` };
+        }
+      } catch {}
+    }
+  }
+
+  if (fs.existsSync(path.join(cwd, 'prisma', 'schema.prisma')) ||
+      fs.existsSync(path.join(cwd, 'schema.prisma')) ||
+      fs.existsSync(path.join(cwd, 'migrations')) ||
+      fs.existsSync(path.join(cwd, 'drizzle.config.ts'))) {
+    return { hasDb: true, reason: 'Database schema/migrations detected' };
+  }
+
+  return { hasDb: false, reason: 'No database dependencies or schemas detected' };
+}
+
 function handleOptimize(customTarget?: string) {
   printHeader();
   const rawTarget = customTarget || (args[0] && !['optimize', 'scan', 'check'].includes(args[0]) ? args[0] : args[1]);
@@ -115,9 +149,12 @@ function handleOptimize(customTarget?: string) {
     ? path.resolve(process.cwd(), rawTarget)
     : process.cwd();
 
+  const dbContext = detectDatabasePresence(cwd);
+
   console.log(`⚡ VELLOX AUTOMATED PROJECT SCANNER & OPTIMIZER\n`);
-  console.log(`  Target Directory:  ${cwd}`);
-  console.log(`  Scanning codebase for SQL queries, migrations, and ORM schemas...\n`);
+  console.log(`  Target Directory:    ${cwd}`);
+  console.log(`  Database Context:    ${dbContext.hasDb ? `Detected (${dbContext.reason})` : 'None (Scanning Code & Security Only)'}`);
+  console.log(`  Scanning codebase for performance bottlenecks, loops, and exposed secrets...\n`);
 
   const foundFiles: string[] = [];
   const scannedQueries: Array<{ file: string; line: number; query: string }> = [];
@@ -161,7 +198,7 @@ function handleOptimize(customTarget?: string) {
       const content = fs.readFileSync(file, 'utf-8');
       const lines = content.split('\n');
 
-      // 1. Prisma schema relations without index: @@index([field])
+      // 1. Prisma schema relations without index (Only if Prisma file exists)
       if (file.endsWith('.prisma')) {
         const modelBlocks = content.split(/model\s+(\w+)\s*\{/g);
         for (let i = 1; i < modelBlocks.length; i += 2) {
@@ -266,8 +303,8 @@ function handleOptimize(customTarget?: string) {
         }
       }
 
-      // 4. Scan for raw SQL statements in source code (skip CLI binary itself)
-      if (!file.includes('bin.') && !file.includes('/dist/')) {
+      // 4. Scan for raw SQL statements in source code (Only if database dependencies are active)
+      if (dbContext.hasDb && !file.includes('bin.') && !file.includes('/dist/') && !file.includes('.test.') && !file.includes('.spec.')) {
         lines.forEach((lineText, idx) => {
           if (/(SELECT\s+[\s\S]+?FROM\s+["`]?(\w+)["`]?)/i.test(lineText)) {
             scannedQueries.push({
@@ -395,14 +432,16 @@ function handleOptimize(customTarget?: string) {
   // Ensure unique fixes
   const uniqueFixes = Array.from(new Set(generatedFixes));
 
-  // Write migrations/vellox_optimizations.sql
-  const migrationsDir = path.join(cwd, 'migrations');
-  if (!fs.existsSync(migrationsDir)) {
-    fs.mkdirSync(migrationsDir, { recursive: true });
-  }
+  // Write migrations/vellox_optimizations.sql only if real fixes are found
+  let migrationRelativePath = 'None (no missing indexes)';
+  if (uniqueFixes.length > 0) {
+    const migrationsDir = path.join(cwd, 'migrations');
+    if (!fs.existsSync(migrationsDir)) {
+      fs.mkdirSync(migrationsDir, { recursive: true });
+    }
 
-  const migrationPath = path.join(migrationsDir, 'vellox_optimizations.sql');
-  const sqlHeader = `-- Vellox Automated Optimization Migration (HUMAN REVIEW REQUIRED)
+    const migrationPath = path.join(migrationsDir, 'vellox_optimizations.sql');
+    const sqlHeader = `-- Vellox Automated Optimization Migration (HUMAN REVIEW REQUIRED)
 -- Target Project: ${path.basename(cwd)}
 -- Generated at: ${new Date().toISOString()}
 --
@@ -411,10 +450,11 @@ function handleOptimize(customTarget?: string) {
 -- 2. Uses 'IF NOT EXISTS' to ensure idempotency.
 -- 3. Vellox never modifies or executes DDL on your production database directly.
 
-${uniqueFixes.length > 0 ? uniqueFixes.join('\n\n') : '-- No critical missing indexes detected in static scan.'}
+${uniqueFixes.join('\n\n')}
 `;
-
-  fs.writeFileSync(migrationPath, sqlHeader, 'utf-8');
+    fs.writeFileSync(migrationPath, sqlHeader, 'utf-8');
+    migrationRelativePath = path.relative(cwd, migrationPath);
+  }
 
   // Generate or update vellox.config.json
   const configPath = path.join(cwd, 'vellox.config.json');
@@ -438,7 +478,7 @@ ${uniqueFixes.length > 0 ? uniqueFixes.join('\n\n') : '-- No critical missing in
   console.log(`  ├─ Code Logic Hotspots (Loops): ${codeHotspots.length}`);
   console.log(`  ├─ Exposed Keys & Secrets:      ${exposedSecrets.length}`);
   console.log(`  ├─ Database Index Fixes Found:  ${uniqueFixes.length}`);
-  console.log(`  └─ Generated Review File:       ${path.relative(cwd, migrationPath)}`);
+  console.log(`  └─ Generated Review File:       ${migrationRelativePath}`);
 
   if (exposedSecrets.length > 0) {
     console.log(`\n🚨 CRITICAL SECURITY ALERT (EXPOSED KEYS & CREDENTIALS DETECTED):`);
