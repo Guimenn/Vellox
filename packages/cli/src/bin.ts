@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const VERSION = '0.1.5';
+const VERSION = '0.1.6';
 
 function printHeader() {
   console.log(`
@@ -109,34 +109,46 @@ function handleDiscover() {
 }
 
 function detectDatabasePresence(cwd: string): { hasDb: boolean; reason: string } {
-  const pkgPath = path.join(cwd, 'package.json');
-  if (fs.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
-      const dbDeps = ['prisma', '@prisma/client', 'pg', 'postgres', 'mysql', 'mysql2', 'typeorm', 'sequelize', 'mongoose', 'knex', 'drizzle-orm', 'ioredis', 'redis', 'mongodb', 'oracledb'];
-      const matched = dbDeps.filter(d => allDeps[d]);
-      if (matched.length > 0) return { hasDb: true, reason: `Dependencies: ${matched.join(', ')}` };
-    } catch {}
-  }
+  const dirsToCheck = [cwd];
+  try {
+    const entries = fs.readdirSync(cwd, { withFileTypes: true });
+    for (const e of entries) {
+      if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules' && e.name !== 'dist') {
+        dirsToCheck.push(path.join(cwd, e.name));
+      }
+    }
+  } catch {}
 
-  for (const pyFile of ['requirements.txt', 'pyproject.toml', 'Pipfile']) {
-    const p = path.join(cwd, pyFile);
-    if (fs.existsSync(p)) {
+  for (const dir of dirsToCheck) {
+    const pkgPath = path.join(dir, 'package.json');
+    if (fs.existsSync(pkgPath)) {
       try {
-        const text = fs.readFileSync(p, 'utf-8');
-        if (/sqlalchemy|psycopg|asyncpg|pymongo|tortoise|databases|redis|pymysql/i.test(text)) {
-          return { hasDb: true, reason: `Python database drivers in ${pyFile}` };
-        }
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+        const dbDeps = ['prisma', '@prisma/client', 'pg', 'postgres', 'mysql', 'mysql2', 'typeorm', 'sequelize', 'mongoose', 'knex', 'drizzle-orm', 'ioredis', 'redis', 'mongodb', 'oracledb'];
+        const matched = dbDeps.filter(d => allDeps[d]);
+        if (matched.length > 0) return { hasDb: true, reason: `Dependencies in ${path.relative(cwd, pkgPath) || 'package.json'}: ${matched.join(', ')}` };
       } catch {}
     }
-  }
 
-  if (fs.existsSync(path.join(cwd, 'prisma', 'schema.prisma')) ||
-      fs.existsSync(path.join(cwd, 'schema.prisma')) ||
-      fs.existsSync(path.join(cwd, 'migrations')) ||
-      fs.existsSync(path.join(cwd, 'drizzle.config.ts'))) {
-    return { hasDb: true, reason: 'Database schema/migrations detected' };
+    for (const pyFile of ['requirements.txt', 'pyproject.toml', 'Pipfile']) {
+      const p = path.join(dir, pyFile);
+      if (fs.existsSync(p)) {
+        try {
+          const text = fs.readFileSync(p, 'utf-8');
+          if (/sqlalchemy|psycopg|asyncpg|pymongo|tortoise|databases|redis|pymysql/i.test(text)) {
+            return { hasDb: true, reason: `Python database drivers in ${path.relative(cwd, p)}` };
+          }
+        } catch {}
+      }
+    }
+
+    if (fs.existsSync(path.join(dir, 'prisma', 'schema.prisma')) ||
+        fs.existsSync(path.join(dir, 'schema.prisma')) ||
+        fs.existsSync(path.join(dir, 'migrations')) ||
+        fs.existsSync(path.join(dir, 'drizzle.config.ts'))) {
+      return { hasDb: true, reason: `Database schema/migrations detected in ${path.relative(cwd, dir) || '.'}` };
+    }
   }
 
   return { hasDb: false, reason: 'No database dependencies or schemas detected' };
@@ -513,7 +525,7 @@ ${uniqueFixes.join('\n\n')}
   if (uniqueFixes.length > 0) {
     console.log(`💡 SQL DDL Preview (Zero-Downtime CONCURRENTLY):`);
     console.log(uniqueFixes.slice(0, 3).join('\n\n'));
-    console.log(`\n👉 Next Step: Review '${path.relative(cwd, migrationPath)}' and apply when ready.`);
+    console.log(`\n👉 Next Step: Review '${migrationRelativePath}' and apply when ready.`);
   } else {
     console.log(`\n✅ Codebase is already clean with no critical unindexed FKs detected.`);
   }

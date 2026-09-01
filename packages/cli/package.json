@@ -1,6 +1,6 @@
 {
   "name": "vellox",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Vellox - High-Scale Performance, Database & Infrastructure Waste Detection CLI",
   "bin": {
     "vellox": "./dist/bin.js"
