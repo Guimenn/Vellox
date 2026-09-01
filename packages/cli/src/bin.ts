@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const VERSION = '0.1.6';
+const VERSION = '0.1.7';
 
 function printHeader() {
   console.log(`
@@ -504,11 +504,22 @@ ${uniqueFixes.join('\n\n')}
 
   if (codeHotspots.length > 0) {
     console.log(`\n🚨 CRITICAL APPLICATION CODE HOTSPOTS (LOOPS & MEMORY):`);
-    for (let i = 0; i < Math.min(codeHotspots.length, 4); i++) {
+    for (let i = 0; i < Math.min(codeHotspots.length, 5); i++) {
       const h = codeHotspots[i]!;
       console.log(`  ${i + 1}. ⚠️  [${h.type}] in ${h.file}:${h.line}`);
-      console.log(`     ├─ Code:   ${h.snippet}`);
-      console.log(`     └─ Action: ${h.fix}\n`);
+      console.log(`     ├─ Code:     ${h.snippet}`);
+      
+      if (h.snippet.includes('deleteMany') || h.snippet.includes('createMany')) {
+        console.log(`     ├─ Refactor: Batch with '{ where: { id: { in: ids } } }' (Reduces N queries to 1)`);
+      } else if (h.snippet.includes('findFirst') || h.snippet.includes('findUnique')) {
+        console.log(`     ├─ Refactor: Batch with 'findMany({ where: { id: { in: ids } } })'`);
+      } else if (h.snippet.includes('count(')) {
+        console.log(`     ├─ Refactor: Cache count or use 'groupBy' / single query outside loop`);
+      } else if (h.snippet.includes('fetch(') || h.snippet.includes('axios.')) {
+        console.log(`     ├─ Refactor: Parallelize with 'Promise.all(items.map(...))' or 'asyncio.gather()'`);
+      }
+
+      console.log(`     └─ Action:   ${h.fix}\n`);
     }
   }
 
@@ -917,6 +928,81 @@ function handleVersion() {
   console.log(`vellox v${VERSION}`);
 }
 
+function handleHook() {
+  printHeader();
+  console.log('🪝 VELLOX GIT PRE-COMMIT HOOK INSTALLER\n');
+  const gitDir = path.join(process.cwd(), '.git');
+  if (!fs.existsSync(gitDir)) {
+    console.error('❌ No .git directory found in current working directory.');
+    console.log('   Run this command in the root of your git repository.');
+    process.exit(1);
+  }
+
+  const hooksDir = path.join(gitDir, 'hooks');
+  if (!fs.existsSync(hooksDir)) {
+    fs.mkdirSync(hooksDir, { recursive: true });
+  }
+
+  const preCommitPath = path.join(hooksDir, 'pre-commit');
+  const hookScript = `#!/usr/bin/env sh
+# Vellox Automated Pre-Commit Quality & Security Gatekeeper
+echo "⚡ Running Vellox Pre-Commit Scan..."
+npx vellox --check-only || {
+  echo "❌ Vellox caught critical performance bottlenecks or exposed secrets before commit!"
+  exit 1
+}
+`;
+
+  fs.writeFileSync(preCommitPath, hookScript, { mode: 0o755 });
+  try {
+    fs.chmodSync(preCommitPath, 0o755);
+  } catch {}
+
+  console.log(`✅ Pre-commit hook successfully installed at:`);
+  console.log(`   ${path.relative(process.cwd(), preCommitPath)}\n`);
+  console.log(`🛡️  From now on, Vellox will automatically protect your repository against exposed API keys and blocking loops before every 'git commit'!`);
+}
+
+function handleCi() {
+  printHeader();
+  console.log('🤖 VELLOX GITHUB ACTIONS CI/CD SETUP\n');
+  const workflowsDir = path.join(process.cwd(), '.github', 'workflows');
+  if (!fs.existsSync(workflowsDir)) {
+    fs.mkdirSync(workflowsDir, { recursive: true });
+  }
+
+  const workflowPath = path.join(workflowsDir, 'vellox-ci.yml');
+  const workflowContent = `name: Vellox Performance & Security CI Gatekeeper
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+  push:
+    branches: [main, master]
+
+jobs:
+  vellox-gatekeeper:
+    name: Vellox Security & Performance Gatekeeper
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run Vellox Automated Code & Security Scan
+        run: npx vellox
+`;
+
+  fs.writeFileSync(workflowPath, workflowContent, 'utf-8');
+  console.log(`✅ GitHub Actions workflow generated at:`);
+  console.log(`   ${path.relative(process.cwd(), workflowPath)}\n`);
+  console.log(`🚀 Automated performance & security gatekeeper is now active on your GitHub repository!`);
+}
+
 function handleHelp() {
   printHeader();
   console.log(`⚡ SIMPLE & POWERFUL COMMANDS:\n`);
@@ -926,6 +1012,8 @@ function handleHelp() {
   console.log(`  npx vellox scan "<sql>"     Analyze a specific SQL query for anti-patterns`);
   console.log(`  npx vellox explain <file>   Diagnose PostgreSQL/MySQL JSON execution plan`);
   console.log(`  npx vellox fix              Generate safe zero-downtime SQL migration`);
+  console.log(`  npx vellox hook             Install Git pre-commit hook (zero exposed keys)`);
+  console.log(`  npx vellox ci               Generate GitHub Actions CI gatekeeper workflow`);
   console.log(`  npx vellox report           Generate executive Markdown cost report`);
   console.log(`  npx vellox check            CI/CD gatekeeper for performance budgets`);
   console.log(`  npx vellox live             Real-time live terminal monitor (top)`);
@@ -971,38 +1059,50 @@ switch (command) {
     handleAiPrompt();
     break;
 
-  // 4. Explain plan parser
+  // 4. Git Hooks & CI
+  case 'hook':
+  case 'hooks':
+  case 'pre-commit':
+    handleHook();
+    break;
+  case 'ci':
+  case 'action':
+  case 'workflow':
+    handleCi();
+    break;
+
+  // 5. Explain plan parser
   case 'explain':
   case 'plan':
     handleExplain();
     break;
 
-  // 5. Executive Report
+  // 6. Executive Report
   case 'report':
   case '-r':
     handleReport();
     break;
 
-  // 6. Fix migration generator
+  // 7. Fix migration generator
   case 'fix':
   case '-f':
     handleFix();
     break;
 
-  // 7. Live monitor / top
+  // 8. Live monitor / top
   case 'top':
   case 'live':
   case 'monitor':
     handleTop();
     break;
 
-  // 8. DDL lock check
+  // 9. DDL lock check
   case 'ddl':
   case 'ddl-check':
     handleDdlCheck();
     break;
 
-  // 9. Discover & Doctor
+  // 10. Discover & Doctor
   case 'discover':
     handleDiscover();
     break;
@@ -1013,7 +1113,7 @@ switch (command) {
     handleInit();
     break;
 
-  // 10. Version & Help
+  // 11. Version & Help
   case 'version':
   case '-v':
   case '--version':
