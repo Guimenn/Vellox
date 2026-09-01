@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const VERSION = '0.1.7';
+const VERSION = '0.1.8';
 
 function printHeader() {
   console.log(`
@@ -232,7 +232,23 @@ function handleOptimize(customTarget?: string) {
         }
       }
 
-      // 2. Foreign Keys in SQL
+      // 2. Drizzle ORM Schema Foreign Keys without index: .references(() => ...)
+      if (/\.(ts|js)$/i.test(file) && (content.includes('pgTable(') || content.includes('mysqlTable(') || content.includes('sqliteTable('))) {
+        const refMatches = [...content.matchAll(/(\w+):\s*(?:uuid|varchar|integer|text|bigint)\([^)]*\)\.references\(\s*\(\)\s*=>\s*(\w+)\.(\w+)\)/g)];
+        for (const rm of refMatches) {
+          const colName = rm[1];
+          const targetTable = rm[2];
+          if (colName && !content.includes(`.on(table.${colName})`) && !content.includes(`index(`)) {
+            const tableMatch = /(?:pgTable|mysqlTable|sqliteTable)\(\s*['"](\w+)['"]/g.exec(content);
+            const tableName = tableMatch ? tableMatch[1] : 'table';
+            generatedFixes.push(
+              `-- Missing Drizzle ORM Index on Foreign Key '${colName}' referencing '${targetTable}'\nCREATE INDEX CONCURRENTLY IF NOT EXISTS idx_${tableName}_${colName} ON "${tableName}" ("${colName}");`
+            );
+          }
+        }
+      }
+
+      // 3. Foreign Keys in SQL
       const fkMatches = [...content.matchAll(/FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(\w+)/gi)];
       for (const match of fkMatches) {
         const col = match[1]?.trim().replace(/["`]/g, '') || 'fk_id';
@@ -541,6 +557,12 @@ ${uniqueFixes.join('\n\n')}
     console.log(`\n✅ Codebase is already clean with no critical unindexed FKs detected.`);
   }
   console.log('');
+
+  const isCiMode = process.argv.includes('--ci') || process.argv.includes('--check-only') || process.argv.includes('check');
+  if (isCiMode && (exposedSecrets.length > 0 || codeHotspots.length > 0)) {
+    console.error(`❌ CI GATE FAILED: Found ${exposedSecrets.length} exposed secrets and ${codeHotspots.length} blocking performance hotspots.`);
+    process.exit(1);
+  }
 }
 
 function handleDemo() {
