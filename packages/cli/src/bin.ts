@@ -779,8 +779,8 @@ function handleScan() {
   if (/LIKE\s+['"]%[^'"]+['"]/i.test(rawInput)) {
     antiPatterns.push({
       issue: 'Leading Wildcard in LIKE predicate',
-      impact: 'Renders B-Tree indexes completely unusable, forcing full table scans across millions of rows.',
-      fix: 'Use PostgreSQL pg_trgm (GIN index) or prefix search LIKE "term%" if possible.'
+      impact: 'Renders standard B-Tree indexes completely unusable, forcing full table scans across millions of rows.',
+      fix: 'Use PostgreSQL pg_trgm (GIN/GiST index) or prefix search LIKE "term%" if possible.'
     });
   }
 
@@ -788,17 +788,63 @@ function handleScan() {
   if (!/LIMIT\s+\d+/i.test(rawInput) && /SELECT/i.test(rawInput) && !/COUNT\(/i.test(rawInput)) {
     antiPatterns.push({
       issue: 'Unbounded Query without LIMIT',
-      impact: 'Risk of memory spikes and client timeouts if table grows to millions of records.',
-      fix: 'Add a sensible LIMIT clause (e.g. LIMIT 50) and cursor-based pagination.'
+      impact: 'Risk of OOM spikes, buffer pool cache trashing, and client socket timeouts at high scale.',
+      fix: 'Add a sensible LIMIT clause (e.g. LIMIT 50) with keyset pagination.'
     });
   }
 
   // 4. Missing WHERE clause
   if (!/WHERE\s+/i.test(rawInput) && /FROM\s+(\w+)/i.test(rawInput) && !/COUNT\(/i.test(rawInput)) {
     antiPatterns.push({
-      issue: 'Missing WHERE Filter (Full Scan)',
-      impact: 'Reads entire table into memory on every single execution.',
+      issue: 'Missing WHERE Filter (Full Scan Risk)',
+      impact: 'Reads entire table pages into memory on every single execution.',
       fix: 'Add appropriate filtering or ensure table is an immutable small lookup table.'
+    });
+  }
+
+  // 5. NOT IN (SELECT ...) Null Trap
+  if (/NOT\s+IN\s*\(\s*SELECT/i.test(rawInput)) {
+    antiPatterns.push({
+      issue: 'NOT IN (SELECT ...) Subquery Anti-Pattern',
+      impact: 'If subquery returns a single NULL, NOT IN evaluates to NULL/false for all rows, breaking logic and disabling Hash Anti-Joins.',
+      fix: 'Replace with NOT EXISTS (SELECT 1 FROM ...) or LEFT JOIN ... WHERE right_id IS NULL.'
+    });
+  }
+
+  // 6. ORDER BY RANDOM() / RAND()
+  if (/ORDER\s+BY\s+(?:RANDOM|RAND)\s*\(\s*\)/i.test(rawInput)) {
+    antiPatterns.push({
+      issue: 'ORDER BY RANDOM() Disk Sort Thrashing',
+      impact: 'Generates random values for every single table row and executes an expensive disk sort (O(N log N)).',
+      fix: 'Use TABLESAMPLE BERNOULLI, random indexed ID offset, or pre-computed random slots.'
+    });
+  }
+
+  // 7. High OFFSET Deep Pagination
+  const offsetMatch = /OFFSET\s+(\d+)/i.exec(rawInput);
+  if (offsetMatch && Number(offsetMatch[1]) >= 1000) {
+    antiPatterns.push({
+      issue: `High OFFSET Pagination (OFFSET ${offsetMatch[1]})`,
+      impact: 'Database must scan and discard all preceding rows in memory before returning page results.',
+      fix: 'Use Keyset / Cursor-based Pagination: WHERE id > last_seen_id ORDER BY id ASC LIMIT 50.'
+    });
+  }
+
+  // 8. Functions wrapping Indexed Columns in WHERE (e.g. date_trunc, lower, upper)
+  if (/WHERE[\s\S]+?(?:date_trunc|lower|upper|substr|to_char|coalesce)\s*\(\s*["`]?\w+["`]?/i.test(rawInput)) {
+    antiPatterns.push({
+      issue: 'Function Wrapped Column in WHERE Clause',
+      impact: 'Applying functions to columns invalidates standard B-Tree indexes, triggering table scans.',
+      fix: 'Create an Expression/Functional Index (e.g. CREATE INDEX idx ON tbl (LOWER(col))) or rewrite using ranges.'
+    });
+  }
+
+  // 9. SELECT DISTINCT with JOINs
+  if (/SELECT\s+DISTINCT\b/i.test(rawInput) && /\bJOIN\b/i.test(rawInput)) {
+    antiPatterns.push({
+      issue: 'SELECT DISTINCT masking Join Multiplication',
+      impact: 'Indicates 1-to-many Cartesian multiplication masked by an expensive in-memory sort/hash deduplication step.',
+      fix: 'Check JOIN conditions or replace with EXISTS / IN subquery.'
     });
   }
 
