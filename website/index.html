@@ -980,6 +980,19 @@
             Telemetry is captured through bounded ring buffers with adaptive reservoir sampling and automatic load shedding — keeping host overhead strictly under 0.00ms and &lt;30MB RAM.
           </p>
         </div>
+
+        <!-- Bento 7: Secret & Key Security -->
+        <div class="bento-item c-12 gsap-card" style="border-color: rgba(239, 68, 68, 0.35);">
+          <span class="b-tag" style="color: #f87171;">DevSecOps & Zero-Leakage</span>
+          <h3>Automated Secret & Exposed API Key Detector</h3>
+          <p>
+            Scans your entire codebase and configuration files for exposed credentials — including Google Gemini, OpenAI, Anthropic Claude, AWS, Stripe, GitHub Tokens, and plaintext database URIs — with instant redaction and actionable remediation.
+          </p>
+          <div class="code-box" style="margin-top: 20px; padding: 16px; background: #030508;">
+            <pre class="schema-code"><code><span class="diff-warn">🚨 CRITICAL SECURITY ALERT: [Google Gemini API Key] in libras-service/.env:1 &rarr; AIzaS...******...xpHE</span>
+<span class="diff-add">🛡️  Action: Automated terminal masking active. Move secret to environment variable and add .env to .gitignore</span></code></pre>
+          </div>
+        </div>
       </div>
     </div>
   </section>

@@ -1,4 +1,4 @@
-name: InfraWaste Performance & Waste CI
+name: Vellox Performance, Security & CI Gatekeeper
 
 on:
   pull_request:
@@ -7,8 +7,8 @@ on:
     branches: [main, master]
 
 jobs:
-  waste-gatekeeper:
-    name: InfraWaste CI Budget & DDL Gatekeeper
+  vellox-gatekeeper:
+    name: Vellox Performance, Security & Test Gatekeeper
     runs-on: ubuntu-latest
 
     steps:
