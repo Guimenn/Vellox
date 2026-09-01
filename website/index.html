@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vellox — Database & Application Performance Intelligence Engine</title>
-  <meta name="description" content="Vellox is an ultra-fast performance intelligence engine and zero-config CLI that detects database bottlenecks, async loops, and unindexed queries in seconds." />
+  <title>Vellox — Ultra-Fast Database & Application Performance Intelligence Engine</title>
+  <meta name="description" content="Vellox is an ultra-fast developer tool and zero-config CLI that detects database bottlenecks, N+1 async loops, unindexed foreign keys, and exposed secrets in seconds." />
 
-  <!-- Google Fonts: Plus Jakarta Sans, Inter, JetBrains Mono -->
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <!-- GSAP & ScrollTrigger -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -17,23 +17,21 @@
 
   <style>
     :root {
-      --bg: #030508;
-      --bg-surface: #070a12;
-      --bg-card: rgba(11, 15, 25, 0.7);
-      --bg-card-hover: rgba(18, 24, 38, 0.85);
-      --border: rgba(255, 255, 255, 0.08);
-      --border-hover: rgba(255, 255, 255, 0.25);
-      --border-accent: rgba(56, 189, 248, 0.4);
-      --text: #f8fafc;
+      --bg: #030712;
+      --bg-surface: #0b0f19;
+      --card-bg: rgba(15, 23, 42, 0.45);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-border-hover: rgba(56, 189, 248, 0.4);
+      --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --text-dim: #64748b;
       --cyan: #38bdf8;
-      --cyan-glow: rgba(56, 189, 248, 0.35);
+      --cyan-glow: rgba(56, 189, 248, 0.25);
+      --violet: #818cf8;
       --purple: #c084fc;
       --emerald: #34d399;
       --rose: #fb7185;
       --amber: #fbbf24;
-      --titanium: #e2e8f0;
     }
 
     * {
@@ -44,7 +42,7 @@
 
     body {
       background-color: var(--bg);
-      color: var(--text);
+      color: var(--text-main);
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       line-height: 1.5;
       overflow-x: hidden;
@@ -52,8 +50,8 @@
       position: relative;
     }
 
-    /* Ambient Background Aurora */
-    .aurora-bg {
+    /* Ambient Dynamic Glowing Background */
+    .ambient-glow {
       position: fixed;
       top: 0;
       left: 0;
@@ -62,43 +60,41 @@
       pointer-events: none;
       z-index: 0;
       background: 
-        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(56, 189, 248, 0.14), transparent 70%),
-        radial-gradient(ellipse 60% 40% at 85% 45%, rgba(192, 132, 252, 0.08), transparent 70%),
-        radial-gradient(ellipse 50% 30% at 15% 75%, rgba(52, 211, 153, 0.05), transparent 70%);
-      opacity: 0.85;
+        radial-gradient(ellipse 90% 55% at 50% -15%, rgba(56, 189, 248, 0.18), transparent 70%),
+        radial-gradient(ellipse 65% 45% at 90% 40%, rgba(129, 140, 248, 0.1), transparent 70%),
+        radial-gradient(ellipse 55% 35% at 10% 70%, rgba(52, 211, 153, 0.07), transparent 70%);
     }
 
-    /* Interactive Mesh Grid */
-    .grid-pattern {
+    .matrix-grid {
       position: absolute;
       inset: 0;
       background-image: 
-        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-      background-size: 56px 56px;
+        linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+      background-size: 48px 48px;
       pointer-events: none;
-      mask-image: radial-gradient(ellipse at 50% 25%, #000 40%, transparent 80%);
-      -webkit-mask-image: radial-gradient(ellipse at 50% 25%, #000 40%, transparent 80%);
+      mask-image: radial-gradient(ellipse at 50% 20%, #000 45%, transparent 85%);
+      -webkit-mask-image: radial-gradient(ellipse at 50% 20%, #000 45%, transparent 85%);
       z-index: 1;
     }
 
     .container {
-      max-width: 1200px;
+      max-width: 1220px;
       margin: 0 auto;
       padding: 0 24px;
       position: relative;
       z-index: 2;
     }
 
-    /* Navbar */
+    /* Header & Navigation */
     header {
       position: sticky;
       top: 0;
       z-index: 100;
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
-      background: rgba(3, 5, 8, 0.75);
-      border-bottom: 1px solid var(--border);
+      background: rgba(3, 7, 18, 0.75);
+      border-bottom: 1px solid var(--card-border);
       transition: all 0.3s;
     }
 
@@ -106,7 +102,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 74px;
+      height: 72px;
     }
 
     .brand {
@@ -118,15 +114,15 @@
     }
 
     .brand-img {
-      width: 36px;
-      height: 36px;
-      border-radius: 9px;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
       border: 1px solid rgba(255, 255, 255, 0.15);
-      box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
     }
 
     .brand-title {
-      font-size: 21px;
+      font-size: 20px;
       font-weight: 800;
       letter-spacing: -0.04em;
       color: #fff;
@@ -159,6 +155,7 @@
     .btn {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 8px;
       padding: 9px 18px;
       border-radius: 8px;
@@ -168,23 +165,24 @@
       cursor: pointer;
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
       border: 1px solid transparent;
+      white-space: nowrap;
     }
 
     .btn-primary {
       background: #ffffff;
       color: #000000;
-      box-shadow: 0 0 25px rgba(255, 255, 255, 0.25);
+      box-shadow: 0 0 25px rgba(255, 255, 255, 0.2);
     }
 
     .btn-primary:hover {
       background: #f1f5f9;
       transform: translateY(-2px);
-      box-shadow: 0 0 35px rgba(255, 255, 255, 0.4);
+      box-shadow: 0 0 35px rgba(255, 255, 255, 0.35);
     }
 
     .btn-secondary {
       background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--border);
+      border: 1px solid var(--card-border);
       color: #f8fafc;
     }
 
@@ -194,9 +192,9 @@
       transform: translateY(-2px);
     }
 
-    /* Hero */
+    /* Hero Section */
     .hero {
-      padding: 90px 0 60px;
+      padding: 96px 0 64px;
       text-align: center;
       position: relative;
     }
@@ -211,7 +209,7 @@
       border-radius: 9999px;
       font-size: 13px;
       font-weight: 500;
-      color: var(--titanium);
+      color: #cbd5e1;
       margin-bottom: 28px;
       text-decoration: none;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
@@ -228,12 +226,12 @@
     }
 
     .hero h1 {
-      font-size: clamp(38px, 6vw, 74px);
+      font-size: clamp(40px, 6.2vw, 76px);
       font-weight: 900;
-      line-height: 1.05;
+      line-height: 1.04;
       letter-spacing: -0.045em;
       margin-bottom: 24px;
-      max-width: 940px;
+      max-width: 980px;
       margin-left: auto;
       margin-right: auto;
       background: linear-gradient(180deg, #ffffff 40%, #94a3b8 100%);
@@ -246,7 +244,7 @@
     .hero p {
       font-size: clamp(16px, 1.8vw, 19px);
       color: var(--text-muted);
-      max-width: 680px;
+      max-width: 700px;
       margin: 0 auto 36px;
       line-height: 1.6;
       opacity: 0;
@@ -257,14 +255,14 @@
       display: flex;
       justify-content: center;
       gap: 14px;
-      margin-bottom: 50px;
+      margin-bottom: 54px;
       opacity: 0;
       transform: translateY(30px);
     }
 
-    /* 3D Tilt Terminal */
+    /* 3D Interactive Terminal Window */
     .terminal-wrap {
-      max-width: 880px;
+      max-width: 920px;
       margin: 0 auto;
       perspective: 1200px;
       opacity: 0;
@@ -272,23 +270,24 @@
     }
 
     .terminal-card {
-      background: #05070d;
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 50px rgba(56, 189, 248, 0.1);
+      background: #040813;
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.85), 0 0 60px rgba(56, 189, 248, 0.12);
       overflow: hidden;
       text-align: left;
       transition: border-color 0.3s, transform 0.1s ease-out;
       will-change: transform;
+      position: relative;
     }
 
     .terminal-card:hover {
-      border-color: var(--border-hover);
+      border-color: var(--card-border-hover);
     }
 
     .terminal-head {
-      background: rgba(255, 255, 255, 0.02);
-      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.025);
+      border-bottom: 1px solid var(--card-border);
       padding: 14px 20px;
       display: flex;
       align-items: center;
@@ -305,9 +304,9 @@
       height: 11px;
       border-radius: 50%;
     }
-    .w-1 { background: #334155; }
-    .w-2 { background: #334155; }
-    .w-3 { background: #334155; }
+    .w-1 { background: #ff5f56; }
+    .w-2 { background: #ffbd2e; }
+    .w-3 { background: #27c93f; }
 
     .nav-tabs {
       display: flex;
@@ -327,18 +326,18 @@
     }
 
     .tab.active, .tab:hover {
-      background: rgba(255, 255, 255, 0.05);
-      border-color: var(--border);
+      background: rgba(255, 255, 255, 0.06);
+      border-color: var(--card-border);
       color: #fff;
     }
 
     .terminal-content {
       padding: 24px;
       font-family: 'JetBrains Mono', monospace;
-      font-size: 13.5px;
+      font-size: 13px;
       line-height: 1.7;
       color: #cbd5e1;
-      min-height: 270px;
+      min-height: 310px;
     }
 
     .cmd-bar {
@@ -346,7 +345,7 @@
       align-items: center;
       justify-content: space-between;
       background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--border);
+      border: 1px solid var(--card-border);
       border-radius: 8px;
       padding: 10px 16px;
       margin-bottom: 20px;
@@ -375,21 +374,21 @@
 
     /* Proof SLA Stats */
     .sla-section {
-      padding: 70px 0;
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
+      padding: 64px 0;
+      border-top: 1px solid var(--card-border);
+      border-bottom: 1px solid var(--card-border);
       background: rgba(255, 255, 255, 0.01);
     }
 
     .sla-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 30px;
+      gap: 32px;
       text-align: center;
     }
 
     .sla-val {
-      font-size: 42px;
+      font-size: 44px;
       font-weight: 900;
       letter-spacing: -0.04em;
       color: #fff;
@@ -402,18 +401,28 @@
       font-weight: 500;
     }
 
-    /* Prisma-Style Schema & Relations Visualizer */
+    /* Prisma & Schema Section */
     .prisma-showcase {
-      padding: 100px 0;
+      padding: 96px 0;
     }
 
     .section-head {
       text-align: center;
-      margin-bottom: 50px;
+      margin-bottom: 54px;
+    }
+
+    .section-badge {
+      display: inline-block;
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--cyan);
+      margin-bottom: 12px;
     }
 
     .section-head h2 {
-      font-size: clamp(30px, 4.5vw, 48px);
+      font-size: clamp(32px, 4.5vw, 50px);
       font-weight: 800;
       letter-spacing: -0.04em;
       margin-bottom: 14px;
@@ -423,7 +432,7 @@
     .section-head p {
       color: var(--text-muted);
       font-size: 16px;
-      max-width: 640px;
+      max-width: 660px;
       margin: 0 auto;
     }
 
@@ -434,19 +443,21 @@
       align-items: stretch;
     }
 
-    @media (max-width: 860px) {
+    @media (max-width: 880px) {
       .prisma-split { grid-template-columns: 1fr; }
       .nav-links { display: none; }
     }
 
     .code-box {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
       border-radius: 16px;
       padding: 24px;
       position: relative;
       overflow: hidden;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
     }
 
     .code-box-header {
@@ -455,7 +466,7 @@
       align-items: center;
       margin-bottom: 16px;
       padding-bottom: 12px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--card-border);
     }
 
     .filename-tag {
@@ -476,8 +487,9 @@
     .type { color: var(--cyan); }
     .attr { color: var(--amber); }
     .comment { color: var(--text-dim); font-style: italic; }
+
     .diff-add {
-      background: rgba(52, 211, 153, 0.15);
+      background: rgba(52, 211, 153, 0.14);
       border-left: 3px solid var(--emerald);
       color: #34d399;
       display: block;
@@ -488,7 +500,7 @@
     }
 
     .diff-warn {
-      background: rgba(251, 113, 133, 0.15);
+      background: rgba(251, 113, 133, 0.14);
       border-left: 3px solid var(--rose);
       color: #fb7185;
       display: block;
@@ -499,7 +511,7 @@
 
     .interactive-toggle-btn {
       background: rgba(56, 189, 248, 0.15);
-      border: 1px solid var(--border-accent);
+      border: 1px solid var(--cyan);
       color: #fff;
       padding: 6px 14px;
       border-radius: 6px;
@@ -514,37 +526,58 @@
       color: #000;
     }
 
-    /* Bento Grid */
+    /* Bento Grid Architecture with Spotlight */
     .bento-container {
       display: grid;
       grid-template-columns: repeat(12, 1fr);
       gap: 20px;
-      margin-bottom: 100px;
     }
 
     .bento-item {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
       padding: 32px;
       position: relative;
       overflow: hidden;
       transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .bento-item::before {
+      content: '';
+      position: absolute;
+      top: var(--mouse-y, -1000px);
+      left: var(--mouse-x, -1000px);
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.15), transparent 70%);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 0;
+    }
+
+    .bento-item:hover::before {
+      opacity: 1;
     }
 
     .bento-item:hover {
-      background: var(--bg-card-hover);
-      border-color: var(--border-hover);
+      background: rgba(18, 28, 51, 0.6);
+      border-color: var(--card-border-hover);
       transform: translateY(-3px);
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);
     }
 
+    .c-12 { grid-column: span 12; }
     .c-8 { grid-column: span 8; }
-    .c-4 { grid-column: span 4; }
     .c-6 { grid-column: span 6; }
+    .c-4 { grid-column: span 4; }
 
     @media (max-width: 900px) {
-      .c-8, .c-4, .c-6 { grid-column: span 12; }
+      .c-8, .c-6, .c-4 { grid-column: span 12; }
     }
 
     .b-tag {
@@ -554,7 +587,9 @@
       letter-spacing: 0.08em;
       color: var(--cyan);
       margin-bottom: 12px;
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .bento-item h3 {
@@ -563,21 +598,27 @@
       letter-spacing: -0.03em;
       margin-bottom: 10px;
       color: #fff;
+      position: relative;
+      z-index: 1;
     }
 
     .bento-item p {
-      font-size: 14px;
+      font-size: 14.5px;
       color: var(--text-muted);
       line-height: 1.6;
+      position: relative;
+      z-index: 1;
     }
 
     /* Playground */
     .sim-panel {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
       padding: 32px;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
     }
 
     .presets-row {
@@ -589,7 +630,7 @@
 
     .preset-chip {
       background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--border);
+      border: 1px solid var(--card-border);
       color: var(--text-muted);
       padding: 8px 16px;
       border-radius: 8px;
@@ -607,8 +648,8 @@
 
     .code-input {
       width: 100%;
-      background: #04060a;
-      border: 1px solid var(--border);
+      background: #040814;
+      border: 1px solid var(--card-border);
       border-radius: 10px;
       padding: 18px;
       color: #fff;
@@ -623,11 +664,11 @@
 
     .code-input:focus {
       border-color: var(--cyan);
-      box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.25);
     }
 
     .diag-output {
-      background: #04060a;
+      background: #040814;
       border-left: 3px solid var(--cyan);
       border-radius: 8px;
       padding: 20px;
@@ -638,7 +679,7 @@
       line-height: 1.6;
     }
 
-    /* ROI Dial & FinOps */
+    /* FinOps ROI Calculator */
     .roi-box {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -646,15 +687,17 @@
       align-items: center;
     }
 
-    @media (max-width: 800px) {
+    @media (max-width: 820px) {
       .roi-box { grid-template-columns: 1fr; }
     }
 
     .slider-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
       padding: 32px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
     }
 
     .slider-item {
@@ -685,31 +728,33 @@
       border-radius: 50%;
       background: #ffffff;
       cursor: pointer;
-      box-shadow: 0 0 14px rgba(255, 255, 255, 0.6);
+      box-shadow: 0 0 14px rgba(255, 255, 255, 0.7);
     }
 
     .roi-result {
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(56, 189, 248, 0.04));
-      border: 1px solid var(--border);
-      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(56, 189, 248, 0.05));
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
       padding: 40px;
       text-align: center;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
     }
 
     .roi-amount {
-      font-size: 54px;
+      font-size: 56px;
       font-weight: 900;
       letter-spacing: -0.04em;
       color: var(--emerald);
       margin: 10px 0;
-      text-shadow: 0 0 25px rgba(52, 211, 153, 0.3);
+      text-shadow: 0 0 30px rgba(52, 211, 153, 0.35);
     }
 
     /* Footer */
     footer {
-      border-top: 1px solid var(--border);
+      border-top: 1px solid var(--card-border);
       padding: 70px 0 40px;
-      background: #000000;
+      background: #02040a;
       text-align: center;
       font-size: 14px;
       color: var(--text-muted);
@@ -735,8 +780,8 @@
 </head>
 <body>
 
-  <div class="aurora-bg"></div>
-  <div class="grid-pattern"></div>
+  <div class="ambient-glow"></div>
+  <div class="matrix-grid"></div>
 
   <!-- Header -->
   <header>
@@ -748,8 +793,8 @@
         </a>
 
         <nav class="nav-links">
+          <a href="#features">Features</a>
           <a href="#prisma">Prisma Engine</a>
-          <a href="#features">Architecture</a>
           <a href="#playground">Playground</a>
           <a href="#roi">FinOps Calculator</a>
           <a href="https://github.com/Guimenn/vellox" target="_blank">GitHub</a>
@@ -772,7 +817,7 @@
     <div class="container">
       <a href="https://www.npmjs.com/package/vellox" target="_blank" class="hero-badge">
         <span class="dot"></span>
-        <span>VELLOX v0.1.1 IS LIVE ON NPM &rarr;</span>
+        <span>VELLOX v0.1.8 IS LIVE ON NPM &rarr;</span>
       </a>
 
       <h1 class="hero-title">
@@ -781,15 +826,15 @@
       </h1>
 
       <p class="hero-desc">
-        Instantly detects N+1 cascades in loops, unindexed foreign keys, and memory leaks.
+        Instantly detects N+1 cascades in loops, unindexed foreign keys, and exposed secrets.
         Calculates cloud cost savings with zero runtime overhead and zero table locks.
       </p>
 
       <div class="hero-actions">
-        <a href="#playground" class="btn btn-primary" style="padding: 12px 28px; font-size: 15px;">
+        <a href="#playground" class="btn btn-primary" style="padding: 13px 28px; font-size: 15px;">
           Try Live Playground
         </a>
-        <a href="https://github.com/Guimenn/vellox" target="_blank" class="btn btn-secondary" style="padding: 12px 24px; font-size: 15px;">
+        <a href="https://github.com/Guimenn/vellox" target="_blank" class="btn btn-secondary" style="padding: 13px 24px; font-size: 15px;">
           View Documentation
         </a>
       </div>
@@ -805,8 +850,9 @@
             </div>
             <div class="nav-tabs">
               <button class="tab active" onclick="switchTerminal('scan')">npx vellox</button>
-              <button class="tab" onclick="switchTerminal('demo')">npx vellox demo</button>
-              <button class="tab" onclick="switchTerminal('ai')">npx vellox ai</button>
+              <button class="tab" onclick="switchTerminal('hook')">npx vellox hook</button>
+              <button class="tab" onclick="switchTerminal('ci')">npx vellox ci</button>
+              <button class="tab" onclick="switchTerminal('fix')">npx vellox fix</button>
             </div>
           </div>
           <div class="terminal-content">
@@ -817,22 +863,33 @@
             <div id="cli-output">
 ⚡ VELLOX AUTOMATED PROJECT SCANNER & OPTIMIZER
 
-  Target Directory:  /my-project
-  Scanning codebase for SQL queries, migrations, and ORM schemas...
+  Target Directory:  /my-production-app
+  Database Context:  Detected (Prisma & PostgreSQL)
+  Scanning codebase for performance bottlenecks, loops, and exposed secrets...
 
-  📁 Scanned 162 project files.
+  📁 Scanned 184 project files in 0.42s.
 
-📊 OPTIMIZATION SCAN COMPLETE:
-  ├─ Source Code Files Analyzed:  162
-  ├─ Code Logic Hotspots (Loops): 4
-  ├─ Database Index Fixes Found:  19
+📊 OPTIMIZATION & SECURITY SCAN COMPLETE:
+  ├─ Source Code Files Analyzed:  184
+  ├─ Code Logic Hotspots (Loops): 3
+  ├─ Exposed Keys & Secrets:      0
+  ├─ Database Index Fixes Found:  12
   └─ Generated Review File:       migrations/vellox_optimizations.sql
 
+🚨 CRITICAL APPLICATION CODE HOTSPOTS:
+  1. ⚠️  [Sequential Async Query in for loop (N+1 Risk)] in src/routes/orders.ts:42
+     ├─ Code:     await prisma.orderItem.deleteMany({ where: { orderId: order.id } })
+     ├─ Refactor: Batch with '{ where: { orderId: { in: orderIds } } }' (Reduces N queries to 1)
+     └─ Action:   Replace sequential round-trips with batch query.
+
 📝 RECOMMENDED PRISMA SCHEMA REFACTORING:
-  +  @@index([organizationId])  // Eliminates full-scan cascade
+   model OrderItem {
+     ...
+  +  @@index([orderId])  // <─ Eliminates full-scan cascade
+   }
 
 💡 SQL DDL Preview (Zero-Downtime CONCURRENTLY):
-  CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_org ON "User" ("organizationId");
+   CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orderitem_orderId ON "OrderItem" ("orderId");
             </div>
           </div>
         </div>
@@ -853,7 +910,7 @@
           <div class="sla-label">RSS Memory Guardrail</div>
         </div>
         <div>
-          <div class="sla-val count-val" data-target="67">67 / 67</div>
+          <div class="sla-val count-val" data-target="64">64 / 64</div>
           <div class="sla-label">Automated Tests (100% Pass)</div>
         </div>
         <div>
@@ -864,12 +921,101 @@
     </div>
   </section>
 
-  <!-- Prisma-Style Interactive Schema & Relation Showcase -->
-  <section class="prisma-showcase" id="prisma">
+  <!-- Bento Grid Architecture with Spotlight -->
+  <section class="prisma-showcase" id="features">
     <div class="container">
       <div class="section-head">
+        <span class="section-badge">Architecture & Capabilities</span>
+        <h2>Engineered for Scale & Zero Overhead</h2>
+        <p>A multi-layered intelligence engine with asynchronous ring buffers and instant root-cause analysis.</p>
+      </div>
+
+      <div class="bento-container" id="bento-grid">
+        <!-- Bento 1: Loop Inspector -->
+        <div class="bento-item c-8 gsap-card">
+          <span class="b-tag">⚡ Static Code & Loop Engine</span>
+          <h3>Async Loop & N+1 Cascade Inspector</h3>
+          <p>
+            Detects sequential database queries nested within <code>for</code>, <code>while</code>, <code>.map(async)</code>, and <code>.forEach(async)</code> loops before they exhaust database connection pools.
+          </p>
+          <div class="code-box" style="margin-top: 20px; padding: 16px; background: #030611;">
+            <pre class="schema-code"><code><span class="diff-warn">- for (const order of orders) { await db.query('SELECT * FROM items WHERE id = $1', [order.id]); }</span>
+<span class="diff-add">+ const items = await db.query('SELECT * FROM items WHERE id = ANY($1)', [orderIds]); // 84x faster</span></code></pre>
+          </div>
+        </div>
+
+        <!-- Bento 2: Zero Lock -->
+        <div class="bento-item c-4 gsap-card">
+          <span class="b-tag">🛡️ Safety First</span>
+          <h3>Zero-Lock DDL Migrations</h3>
+          <p>
+            Vellox never executes intrusive DDL on your production database directly. It produces idempotent <code>CREATE INDEX CONCURRENTLY IF NOT EXISTS</code> migrations for human review.
+          </p>
+        </div>
+
+        <!-- Bento 3: Git Pre-Commit Hook -->
+        <div class="bento-item c-4 gsap-card">
+          <span class="b-tag">🪝 1-Click Automation</span>
+          <h3>Git Pre-Commit Hook Guard</h3>
+          <p>
+            Run <code>npx vellox hook</code> to instantly inject pre-commit checks. Traps exposed credentials and blocking loops before git commits.
+          </p>
+        </div>
+
+        <!-- Bento 4: EXPLAIN Plan Analyzer -->
+        <div class="bento-item c-8 gsap-card">
+          <span class="b-tag">🔬 Deep Execution Diagnostics</span>
+          <h3>PostgreSQL & MySQL EXPLAIN Analyzer</h3>
+          <p>
+            Ingest raw execution plans (<code>EXPLAIN ANALYZE, BUFFERS, FORMAT JSON</code>) to instantly compute Buffer Cache Hit Ratios, disk sort spills, and sequential table scan penalties.
+          </p>
+          <div class="code-box" style="margin-top: 20px; padding: 16px; background: #030611;">
+            <pre class="schema-code"><code><span class="type">Buffer Cache Hit Ratio: 98.4%</span> (4,820 shared hits / 78 disk reads)
+<span class="diff-warn">⚠️  Sequential Table Scan on 'products' (1.8M rows in 240ms) &rarr; Fix: idx_products_status_tags</span></code></pre>
+          </div>
+        </div>
+
+        <!-- Bento 5: Universal DB -->
+        <div class="bento-item c-6 gsap-card">
+          <span class="b-tag">🌐 Universal Compatibility</span>
+          <h3>Multi-Database Universal Adapters</h3>
+          <p>
+            Native metric adapters for PostgreSQL, MySQL, MariaDB, MongoDB (COLLSCAN and pipeline stages), Redis (expensive keys), Oracle, and Drizzle ORM.
+          </p>
+        </div>
+
+        <!-- Bento 6: Zero Overhead -->
+        <div class="bento-item c-6 gsap-card">
+          <span class="b-tag">⏱️ Under 1ms Overhead</span>
+          <h3>Stateless Asynchronous Ring Buffer</h3>
+          <p>
+            Telemetry is captured through bounded ring buffers with adaptive reservoir sampling and automatic load shedding — keeping host overhead strictly under 0.00ms and &lt;30MB RAM.
+          </p>
+        </div>
+
+        <!-- Bento 7: Secret & Key Security -->
+        <div class="bento-item c-12 gsap-card" style="border-color: rgba(239, 68, 68, 0.35);">
+          <span class="b-tag" style="color: #f87171;">🔒 DevSecOps & Zero-Leakage</span>
+          <h3>Automated Secret & Exposed API Key Detector</h3>
+          <p>
+            Scans your entire codebase and configuration files for exposed credentials — including Google Gemini, OpenAI, Anthropic Claude, AWS, Stripe, GitHub Tokens, and plaintext database URIs — with instant redaction and actionable remediation.
+          </p>
+          <div class="code-box" style="margin-top: 20px; padding: 16px; background: #030611;">
+            <pre class="schema-code"><code><span class="diff-warn">🚨 CRITICAL SECURITY ALERT: [Google Gemini API Key] in .env:1 &rarr; AIzaS...******...xpHE</span>
+<span class="diff-add">🛡️  Action: Automated terminal masking active. Move secret to environment variable and add .env to .gitignore</span></code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Prisma-Style Interactive Schema & Relation Showcase -->
+  <section class="prisma-showcase" id="prisma" style="border-top: 1px solid var(--card-border);">
+    <div class="container">
+      <div class="section-head">
+        <span class="section-badge">ORM Intelligence</span>
         <h2>Prisma & SQL Native Intelligence</h2>
-        <p>Vellox understands relations across your Prisma schemas, raw SQL migrations, and API routes.</p>
+        <p>Vellox understands relations across your Prisma schemas, Drizzle ORMs, raw SQL migrations, and API routes.</p>
       </div>
 
       <div class="prisma-split">
@@ -910,97 +1056,11 @@
     </div>
   </section>
 
-  <!-- Bento Grid Architecture -->
-  <section class="prisma-showcase" id="features" style="padding-top: 0;">
-    <div class="container">
-      <div class="section-head">
-        <h2>Engineered for Scale & Zero Overhead</h2>
-        <p>A multi-layered telemetry engine with asynchronous ring buffers and instant root-cause analysis.</p>
-      </div>
-
-      <div class="bento-container">
-        <!-- Bento 1: Loop Inspector -->
-        <div class="bento-item c-8 gsap-card">
-          <span class="b-tag">Static Code & Loop Engine</span>
-          <h3>Async Loop & N+1 Cascade Inspector</h3>
-          <p>
-            Detects sequential database queries nested within <code>for</code>, <code>while</code>, <code>.map(async)</code>, and <code>.forEach(async)</code> loops before they exhaust database connection pools.
-          </p>
-          <div class="code-box" style="margin-top: 20px; padding: 16px; background: #030508;">
-            <pre class="schema-code"><code><span class="diff-warn">- for (const order of orders) { await db.query('SELECT * FROM items WHERE id = $1', [order.id]); }</span>
-<span class="diff-add">+ const items = await db.query('SELECT * FROM items WHERE id = ANY($1)', [orderIds]); // 84x faster</span></code></pre>
-          </div>
-        </div>
-
-        <!-- Bento 2: Zero Lock -->
-        <div class="bento-item c-4 gsap-card">
-          <span class="b-tag">Safety First</span>
-          <h3>Zero-Lock DDL Migrations</h3>
-          <p>
-            Vellox never executes intrusive DDL on your production database directly. It produces idempotent <code>CREATE INDEX CONCURRENTLY IF NOT EXISTS</code> migrations for human review.
-          </p>
-        </div>
-
-        <!-- Bento 3: AI Prompts -->
-        <div class="bento-item c-4 gsap-card">
-          <span class="b-tag">AI Developer Tooling</span>
-          <h3>Zero-Hallucination AI Prompts</h3>
-          <p>
-            Generate high-context refactoring instructions with execution metrics and index requirements for Cursor, GitHub Copilot, ChatGPT, or Claude.
-          </p>
-        </div>
-
-        <!-- Bento 4: EXPLAIN Plan Analyzer -->
-        <div class="bento-item c-8 gsap-card">
-          <span class="b-tag">Deep Execution Diagnostics</span>
-          <h3>PostgreSQL & MySQL EXPLAIN Analyzer</h3>
-          <p>
-            Ingest raw execution plans (<code>EXPLAIN ANALYZE, BUFFERS, FORMAT JSON</code>) to instantly compute Buffer Cache Hit Ratios, disk sort spills, and sequential table scan penalties.
-          </p>
-          <div class="code-box" style="margin-top: 20px; padding: 16px; background: #030508;">
-            <pre class="schema-code"><code><span class="type">Buffer Cache Hit Ratio: 98.4%</span> (4,820 shared hits / 78 disk reads)
-<span class="diff-warn">⚠️  Sequential Table Scan on 'products' (1.8M rows in 240ms) &rarr; Fix: idx_products_status_tags</span></code></pre>
-          </div>
-        </div>
-
-        <!-- Bento 5: Universal DB -->
-        <div class="bento-item c-6 gsap-card">
-          <span class="b-tag">Universal Compatibility</span>
-          <h3>Multi-Database Universal Adapters</h3>
-          <p>
-            Native metric adapters for PostgreSQL (<code>pg_stat_statements</code>, table bloat), MySQL, MariaDB, MongoDB (COLLSCAN and aggregation pipeline stages), Redis (expensive keys), and Oracle.
-          </p>
-        </div>
-
-        <!-- Bento 6: Zero Overhead -->
-        <div class="bento-item c-6 gsap-card">
-          <span class="b-tag">Under 1ms Overhead</span>
-          <h3>Stateless Asynchronous Ring Buffer</h3>
-          <p>
-            Telemetry is captured through bounded ring buffers with adaptive reservoir sampling and automatic load shedding — keeping host overhead strictly under 0.00ms and &lt;30MB RAM.
-          </p>
-        </div>
-
-        <!-- Bento 7: Secret & Key Security -->
-        <div class="bento-item c-12 gsap-card" style="border-color: rgba(239, 68, 68, 0.35);">
-          <span class="b-tag" style="color: #f87171;">DevSecOps & Zero-Leakage</span>
-          <h3>Automated Secret & Exposed API Key Detector</h3>
-          <p>
-            Scans your entire codebase and configuration files for exposed credentials — including Google Gemini, OpenAI, Anthropic Claude, AWS, Stripe, GitHub Tokens, and plaintext database URIs — with instant redaction and actionable remediation.
-          </p>
-          <div class="code-box" style="margin-top: 20px; padding: 16px; background: #030508;">
-            <pre class="schema-code"><code><span class="diff-warn">🚨 CRITICAL SECURITY ALERT: [Google Gemini API Key] in libras-service/.env:1 &rarr; AIzaS...******...xpHE</span>
-<span class="diff-add">🛡️  Action: Automated terminal masking active. Move secret to environment variable and add .env to .gitignore</span></code></pre>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- Interactive Playground -->
-  <section class="prisma-showcase" id="playground" style="background: rgba(255, 255, 255, 0.01); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+  <section class="prisma-showcase" id="playground" style="background: rgba(255, 255, 255, 0.01); border-top: 1px solid var(--card-border); border-bottom: 1px solid var(--card-border);">
     <div class="container">
       <div class="section-head">
+        <span class="section-badge">Live Sandbox</span>
         <h2>Interactive Playground</h2>
         <p>Test the Vellox static analysis engine in your browser with real-world query anti-patterns.</p>
       </div>
@@ -1028,6 +1088,7 @@
   <section class="prisma-showcase" id="roi">
     <div class="container">
       <div class="section-head">
+        <span class="section-badge">FinOps Analytics</span>
         <h2>Cloud Database FinOps ROI Calculator</h2>
         <p>Calculate your annual cloud savings across AWS RDS, Aurora, and EC2 database workloads.</p>
       </div>
@@ -1098,201 +1159,248 @@
       // Hero Timeline
       const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
       tl.to(".hero-badge", { opacity: 1, y: 0, duration: 0.7 })
-        .to(".hero-title", { opacity: 1, y: 0, duration: 0.8 }, "-=0.4")
-        .to(".hero-desc", { opacity: 1, y: 0, duration: 0.8 }, "-=0.5")
+        .to(".hero h1", { opacity: 1, y: 0, duration: 0.8 }, "-=0.4")
+        .to(".hero p", { opacity: 1, y: 0, duration: 0.8 }, "-=0.5")
         .to(".hero-actions", { opacity: 1, y: 0, duration: 0.7 }, "-=0.5")
-        .to(".terminal-wrap", { opacity: 1, y: 0, duration: 0.9 }, "-=0.5");
+        .to(".terminal-wrap", { opacity: 1, y: 0, duration: 0.9 }, "-=0.4");
 
-      // Bento Cards ScrollTrigger
-      gsap.utils.toArray(".gsap-card").forEach((card, index) => {
+      // Bento Cards Entrance with ScrollTrigger
+      gsap.utils.toArray(".gsap-card").forEach((card) => {
         gsap.from(card, {
           scrollTrigger: {
             trigger: card,
             start: "top 85%",
-            toggleActions: "play none none reverse"
+            toggleActions: "play none none none"
           },
-          opacity: 0,
           y: 40,
+          opacity: 0,
           duration: 0.8,
-          delay: (index % 2) * 0.15,
           ease: "power2.out"
         });
       });
 
-      // 3D Terminal Tilt on Mousemove
-      const terminalWrap = document.getElementById("tilt-terminal");
-      const terminalCard = terminalWrap.querySelector(".terminal-card");
-
-      terminalWrap.addEventListener("mousemove", (e) => {
-        const rect = terminalWrap.getBoundingClientRect();
-        const x = e.clientX - rect.left - rect.width / 2;
-        const y = e.clientY - rect.top - rect.height / 2;
-        const rotateX = -(y / rect.height) * 12;
-        const rotateY = (x / rect.width) * 12;
-        gsap.to(terminalCard, {
-          rotateX: rotateX,
-          rotateY: rotateY,
-          duration: 0.4,
-          ease: "power1.out"
+      // Mouse Spotlight Tracking on Bento Cards
+      const bentoContainer = document.getElementById("bento-grid");
+      if (bentoContainer) {
+        bentoContainer.addEventListener("mousemove", (e) => {
+          const cards = document.querySelectorAll(".bento-item");
+          cards.forEach((card) => {
+            const rect = card.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            card.style.setProperty("--mouse-x", `${x}px`);
+            card.style.setProperty("--mouse-y", `${y}px`);
+          });
         });
-      });
+      }
 
-      terminalWrap.addEventListener("mouseleave", () => {
-        gsap.to(terminalCard, { rotateX: 0, rotateY: 0, duration: 0.7, ease: "power2.out" });
-      });
+      // 3D Terminal Tilt Effect
+      const term = document.getElementById("tilt-terminal");
+      if (term) {
+        term.addEventListener("mousemove", (e) => {
+          const rect = term.getBoundingClientRect();
+          const x = e.clientX - rect.left - rect.width / 2;
+          const y = e.clientY - rect.top - rect.height / 2;
+          const rotateX = -(y / rect.height) * 12;
+          const rotateY = (x / rect.width) * 12;
+          const card = term.querySelector(".terminal-card");
+          if (card) {
+            card.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+          }
+        });
+
+        term.addEventListener("mouseleave", () => {
+          const card = term.querySelector(".terminal-card");
+          if (card) {
+            card.style.transform = "rotateX(0deg) rotateY(0deg)";
+          }
+        });
+      }
+
+      // Default Playground
+      pickPreset('n1');
+      updateFinOps();
     });
 
-    // Terminal Switching
+    // Terminal Switcher
     const terminalData = {
       scan: {
-        cmd: '$ npx vellox',
-        out: `⚡ VELLOX AUTOMATED PROJECT SCANNER & OPTIMIZER
+        cmd: "$ npx vellox",
+        output: `⚡ VELLOX AUTOMATED PROJECT SCANNER & OPTIMIZER
 
-  Target Directory:  /my-project
-  Scanning codebase for SQL queries, migrations, and ORM schemas...
+  Target Directory:  /my-production-app
+  Database Context:  Detected (Prisma & PostgreSQL)
+  Scanning codebase for performance bottlenecks, loops, and exposed secrets...
 
-  📁 Scanned 162 project files.
+  📁 Scanned 184 project files in 0.42s.
 
-📊 OPTIMIZATION SCAN COMPLETE:
-  ├─ Source Code Files Analyzed:  162
-  ├─ Code Logic Hotspots (Loops): 4
-  ├─ Database Index Fixes Found:  19
+📊 OPTIMIZATION & SECURITY SCAN COMPLETE:
+  ├─ Source Code Files Analyzed:  184
+  ├─ Code Logic Hotspots (Loops): 3
+  ├─ Exposed Keys & Secrets:      0
+  ├─ Database Index Fixes Found:  12
   └─ Generated Review File:       migrations/vellox_optimizations.sql
 
+🚨 CRITICAL APPLICATION CODE HOTSPOTS:
+  1. ⚠️  [Sequential Async Query in for loop (N+1 Risk)] in src/routes/orders.ts:42
+     ├─ Code:     await prisma.orderItem.deleteMany({ where: { orderId: order.id } })
+     ├─ Refactor: Batch with '{ where: { orderId: { in: orderIds } } }' (Reduces N queries to 1)
+     └─ Action:   Replace sequential round-trips with batch query.
+
 📝 RECOMMENDED PRISMA SCHEMA REFACTORING:
-  +  @@index([organizationId])  // Eliminates full-scan cascade
+   model OrderItem {
+     ...
+  +  @@index([orderId])  // <─ Eliminates full-scan cascade
+   }
 
 💡 SQL DDL Preview (Zero-Downtime CONCURRENTLY):
-  CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_org ON "User" ("organizationId");`
+   CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orderitem_orderId ON "OrderItem" ("orderId");`
       },
-      demo: {
-        cmd: '$ npx vellox demo',
-        out: `🚀 VELLOX REAL-TIME SIMULATION & LOAD DEMO
+      hook: {
+        cmd: "$ npx vellox hook",
+        output: `🪝 VELLOX GIT PRE-COMMIT HOOK INSTALLER
 
-  [1/3] Simulating GET /api/v1/orders/:id (N+1 query cascade)
-  [2/3] Analyzing root causes and calculating financial ROI...
-  [3/3] Analysis complete!
+  Target Git Repository: /my-production-app/.git
 
-──────────────────────────────────────────────────────────────────────
-  💰 ESTIMATED MONTHLY CLOUD COST:  $48,291.00
-  🔥 ACTIONABLE IDENTIFIED WASTE:    $8,421.00 / mo (17.4% waste ratio)
-  ⚡ RECLAIMABLE DB CPU / IOPS:      -31% Database Load
-──────────────────────────────────────────────────────────────────────
-  1. 🔴 [CRITICAL] N+1 Query Cascade in GET /api/v1/orders/:id (~$1,284/mo)`
+  ✅ Pre-commit hook successfully installed at:
+     .git/hooks/pre-commit
+
+  🛡️  From now on, Vellox will automatically protect your repository against
+     exposed API keys and blocking loops before every 'git commit'!`
       },
-      ai: {
-        cmd: '$ npx vellox ai "SELECT * FROM orders WHERE customer_id = 42"',
-        out: `🤖 GENERATED HIGH-CONTEXT AI OPTIMIZATION PROMPT
-──────────────────────────────────────────────────────────────────────
-You are a Principal Database Performance Engineer.
-Task: Optimize the following query to eliminate table scans:
+      ci: {
+        cmd: "$ npx vellox ci",
+        output: `🤖 VELLOX GITHUB ACTIONS CI/CD SETUP
 
-Target Query: SELECT * FROM orders WHERE customer_id = 42
+  Target Workflow: .github/workflows/vellox-ci.yml
 
-Bottlenecks: Wildcard SELECT *, unindexed filter on customer_id
-Deliverables:
-1. Column projection rewrite
-2. CREATE INDEX CONCURRENTLY idx_orders_customer_id ON orders (customer_id);`
+  ✅ GitHub Actions workflow generated at:
+     .github/workflows/vellox-ci.yml
+
+  🚀 Automated performance & security gatekeeper is now active on your GitHub repository!
+     Pull requests will be automatically checked for performance regressions and leaks.`
+      },
+      fix: {
+        cmd: "$ npx vellox fix",
+        output: `🔧 VELLOX AUTOMATED MIGRATION & FIX GENERATOR
+
+  ✅ Generated automated SQL fix migration at:
+     migrations/vellox_recommended_fixes.sql
+
+Migration Contents:
+-- 1. Fix Unindexed Foreign Key on order_items (Ref: orders.id)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_order_items_order_id ON order_items (order_id);
+
+-- 2. Fix Composite Filter Scan on products (Ref: COLLSCAN / Table Scan)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_products_category_instock ON products (category, in_stock);
+
+-- 3. Fix High-Frequency Customer Lookups (Ref: Repeated Query Waste)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_tenant_email ON users (tenant_id, email);`
       }
     };
 
-    function switchTerminal(key) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      event.target.classList.add('active');
-      document.getElementById('cli-cmd').innerText = terminalData[key].cmd;
-      document.getElementById('cli-output').innerText = terminalData[key].out;
+    function switchTerminal(tab) {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      event.target.classList.add("active");
+      const data = terminalData[tab];
+      if (data) {
+        document.getElementById("cli-cmd").innerText = data.cmd;
+        document.getElementById("cli-output").innerText = data.output;
+      }
     }
 
     function copyCli() {
-      const text = document.getElementById('cli-cmd').innerText.replace('$ ', '');
+      const text = document.getElementById("cli-cmd").innerText.replace("$ ", "");
       navigator.clipboard.writeText(text);
-      const btn = document.querySelector('.copy-chip');
-      btn.innerText = 'Copied! ✓';
-      setTimeout(() => btn.innerText = 'Copy', 2000);
+      const btn = event.target;
+      btn.innerText = "Copied!";
+      setTimeout(() => { btn.innerText = "Copy"; }, 2000);
     }
 
-    // Toggle Prisma Index Demo
-    let indexApplied = false;
+    // Prisma Index Toggle
+    let isIndexed = false;
     function togglePrismaIndex() {
-      const line = document.getElementById('prisma-index-line');
-      const btn = document.getElementById('toggle-index-btn');
-      indexApplied = !indexApplied;
-
-      if (indexApplied) {
-        line.className = 'diff-add';
-        line.innerText = '  +  @@index([organizationId])  // ✅ Index applied: 0ms scan';
-        btn.innerText = '↺ Revert to Unindexed';
-        btn.style.background = 'rgba(52, 211, 153, 0.2)';
-        btn.style.borderColor = 'var(--emerald)';
+      isIndexed = !isIndexed;
+      const line = document.getElementById("prisma-index-line");
+      const btn = document.getElementById("toggle-index-btn");
+      if (isIndexed) {
+        line.className = "diff-add";
+        line.innerText = "  @@index([organizationId])  // ⚡ 84x Faster Joins (Eliminates Full Table Scan)";
+        btn.innerText = "↩️ Revert to Unindexed";
       } else {
-        line.className = 'diff-warn';
-        line.innerText = '// ⚠️ Missing index on foreign key organizationId';
-        btn.innerText = '⚡ Toggle Index Fix';
-        btn.style.background = 'rgba(56, 189, 248, 0.15)';
-        btn.style.borderColor = 'var(--border-accent)';
+        line.className = "diff-warn";
+        line.innerText = "// ⚠️ Missing index on foreign key organizationId";
+        btn.innerText = "⚡ Toggle Index Fix";
       }
     }
 
     // Playground Logic
-    const playgroundPresets = {
-      n1: `for (const order of orders) {
+    const presets = {
+      n1: `// Sequential Async Loop in Express Route
+for (const order of orders) {
   const items = await db.query('SELECT * FROM order_items WHERE order_id = $1', [order.id]);
 }`,
-      wild: `SELECT * FROM users WHERE email = 'guilherme@example.com' AND status = 'active'`,
-      like: `SELECT id, title FROM articles WHERE content LIKE '%database%' LIMIT 20`,
-      mongo: `db.collection('products').find({ status: 'ACTIVE', tags: 'sale' }).sort({ created_at: -1 })`
+      wild: `SELECT * FROM users JOIN transactions ON users.id = transactions.user_id WHERE transactions.amount > 1000;`,
+      like: `SELECT id, email, full_name FROM customers WHERE full_name LIKE '%silva' LIMIT 50;`,
+      mongo: `db.collection('products').find({ "metadata.status": "active", "price": { $gt: 100 } }).toArray();`
     };
 
     function pickPreset(key) {
-      document.querySelectorAll('.preset-chip').forEach(b => b.classList.remove('active'));
-      event.target.classList.add('active');
-      document.getElementById('playground-code').value = playgroundPresets[key];
+      document.querySelectorAll(".preset-chip").forEach(c => c.classList.remove("active"));
+      const chip = Array.from(document.querySelectorAll(".preset-chip")).find(c => c.getAttribute("onclick")?.includes(key));
+      if (chip) chip.classList.add("active");
+      document.getElementById("playground-code").value = presets[key];
       runPlayground();
     }
 
     function runPlayground() {
-      const code = document.getElementById('playground-code').value;
-      const res = document.getElementById('playground-output');
+      const code = document.getElementById("playground-code").value;
+      const output = document.getElementById("playground-output");
 
-      if (code.includes('for (') || code.includes('for(') || code.includes('await db.')) {
-        res.innerText = `🚨 CRITICAL FINDING: Sequential Async Query inside loop (N+1 Risk)
-   ├─ Impact:  Fires sequential queries per record. Connection pool exhaustion risk.
-   ├─ Fix:     Use batch SELECT with WHERE order_id = ANY($1) or DataLoader.
-   └─ Safe SQL: CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_order_items_order_id ON order_items (order_id);`;
-      } else if (code.includes('SELECT *')) {
-        res.innerText = `⚠️  HIGH FINDING: Wildcard SELECT * Column Retrieval
-   ├─ Impact:  Transfers excessive payload over network; prevents Index-Only Scans.
-   ├─ Fix:     Project only necessary columns (e.g. SELECT id, email, status FROM users).
-   └─ Safe SQL: CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users (email);`;
-      } else if (code.includes('LIKE \'%')) {
-        res.innerText = `⚠️  CRITICAL FINDING: Leading Wildcard in LIKE predicate
-   ├─ Impact:  B-Tree indexes cannot be used. Forces full table scan across all rows.
-   └─ Fix:     Use PostgreSQL pg_trgm (GIN index) or exact prefix search LIKE 'term%'.`;
+      if (code.includes("for") && code.includes("await")) {
+        output.innerHTML = `🚨 CRITICAL FINDING: Sequential Async Database Loop Detected (N+1 Risk)
+├─ Pattern:   Query executed inside for/while loop
+├─ Impact:    ${code.includes("orders") ? "O(N) database roundtrips causing connection pool starvation and high latency" : "Multiple sequential roundtrips"}
+└─ Solution:  Batch query using 'WHERE order_id = ANY($1)' or Prisma '{ in: ids }'
+
+💡 REFACTORED CODE:
+const items = await db.query('SELECT * FROM order_items WHERE order_id = ANY($1)', [orders.map(o => o.id)]);`;
+      } else if (code.includes("SELECT *")) {
+        output.innerHTML = `⚠️  HIGH IMPACT: Wildcard SELECT * Retrieval
+├─ Impact:    Transfers unnecessary table columns over network and prevents Index-Only Scans
+└─ Solution:  Specify required columns explicitly (e.g. SELECT users.id, transactions.amount)`;
+      } else if (code.includes("LIKE '%")) {
+        output.innerHTML = `🚨 CRITICAL FINDING: Leading Wildcard in LIKE Predicate
+├─ Impact:    Standard B-Tree indexes cannot be used, forcing a Full Table Scan on 'customers'
+└─ Solution:  Use PostgreSQL pg_trgm GIN index:
+              CREATE INDEX idx_customers_name_trgm ON customers USING gin (full_name gin_trgm_ops);`;
+      } else if (code.includes("find(") && code.includes("metadata.status")) {
+        output.innerHTML = `⚠️  MEDIUM IMPACT: Unindexed MongoDB COLLSCAN
+├─ Impact:    Collection scan across entire 'products' collection
+└─ Solution:  Create compound index:
+              db.products.createIndex({ "metadata.status": 1, "price": 1 });`;
       } else {
-        res.innerText = `📊 ANALYSIS COMPLETE:
-   ├─ Diagnostic: Standard query execution
-   └─ Safe SQL: CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_lookup ON table (id);`;
+        output.innerHTML = `⚡ VELLOX ANALYSIS COMPLETE
+✅ Code structure is clean. No critical sequential loops or unindexed full scans detected.`;
       }
     }
 
     // FinOps Calculator
     function updateFinOps() {
-      const spend = parseFloat(document.getElementById('spend-slider').value);
-      const services = parseInt(document.getElementById('services-slider').value);
-      const queries = parseFloat(document.getElementById('queries-slider').value);
+      const spend = Number(document.getElementById("spend-slider").value);
+      const services = Number(document.getElementById("services-slider").value);
+      const queries = Number(document.getElementById("queries-slider").value);
 
-      document.getElementById('spend-txt').innerText = '$' + spend.toLocaleString() + ' / mo';
-      document.getElementById('services-txt').innerText = services + ' Services';
-      document.getElementById('queries-txt').innerText = queries.toFixed(1) + ' Million / day';
+      document.getElementById("spend-txt").innerText = `$${spend.toLocaleString()} / mo`;
+      document.getElementById("services-txt").innerText = `${services} Services`;
+      document.getElementById("queries-txt").innerText = `${queries.toFixed(1)} Million / day`;
 
-      const savings = spend * 0.174;
-      document.getElementById('savings-txt').innerText = '$' + Math.round(savings).toLocaleString() + '.00 / mo';
+      // Calculation formula based on query volume and spend
+      const wasteFactor = Math.min(0.38, 0.12 + (services * 0.005) + (queries * 0.008));
+      const monthlySavings = spend * wasteFactor;
+
+      document.getElementById("savings-txt").innerText = `$${monthlySavings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / mo`;
     }
-
-    // Init
-    document.getElementById('playground-code').value = playgroundPresets['n1'];
-    runPlayground();
-    updateFinOps();
   </script>
 </body>
 </html>
