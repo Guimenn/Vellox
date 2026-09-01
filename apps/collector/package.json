@@ -1,0 +1,27 @@
+{
+  "name": "@infrawaste/collector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "High-throughput stateless batch telemetry collector for InfraWaste",
+  "type": "module",
+  "scripts": {
+    "build": "tsup src/server.ts --format esm --clean",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@infrawaste/core": "workspace:*",
+    "@infrawaste/cost-engine": "workspace:*",
+    "@infrawaste/analyzer": "workspace:*",
+    "@infrawaste/otel-bridge": "workspace:*",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.5",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.2",
+    "tsup": "^8.3.6",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}

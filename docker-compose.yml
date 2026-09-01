@@ -1,0 +1,67 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    container_name: infrawaste-clickhouse
+    ports:
+      - "8123:8123" # HTTP API
+      - "9000:9000" # Native Client
+    volumes:
+      - ./infrastructure/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - clickhouse-data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      CLICKHOUSE_DB: infrawaste
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  collector:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.collector
+    container_name: infrawaste-collector
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: "4000"
+      CLICKHOUSE_HOST: "clickhouse"
+      CLICKHOUSE_PORT: "8123"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.dashboard
+    container_name: infrawaste-dashboard
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      COLLECTOR_URL: "http://collector:4000"
+    depends_on:
+      - collector
+
+  bad-api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.bad-api
+    container_name: infrawaste-bad-api
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      INFRAWASTE_COLLECTOR_URL: "http://collector:4000/api/v1/telemetry/batches"
+      INFRAWASTE_SERVICE_NAME: "bad-api"
+    depends_on:
+      - collector
+
+volumes:
+  clickhouse-data:

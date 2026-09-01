@@ -1,0 +1,22 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Seq Scan",
+      "Relation Name": "payments",
+      "Alias": "payments",
+      "Startup Cost": 0.0,
+      "Total Cost": 3840.0,
+      "Plan Rows": 100,
+      "Actual Startup Time": 0.04,
+      "Actual Total Time": 88.5,
+      "Actual Rows": 45000,
+      "Actual Loops": 1,
+      "Shared Hit Blocks": 1200,
+      "Shared Read Blocks": 3400,
+      "Filter": "(status = 'FAILED'::text)",
+      "Rows Removed by Filter": 50000
+    },
+    "Planning Time": 0.92,
+    "Execution Time": 89.42
+  }
+]

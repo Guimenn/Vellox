@@ -1,0 +1,48 @@
+VELLOX SOFTWARE LICENSE AGREEMENT
+Copyright (c) 2026 Guilherme Men. All Rights Reserved.
+
+IMPORTANT: PLEASE READ THIS LICENSE AGREEMENT CAREFULLY BEFORE USING,
+DOWNLOADING, OR ACCESSING THIS SOFTWARE.
+
+1. PROPRIETARY RIGHTS AND OWNERSHIP
+The Software, including but not limited to its source code, architecture, algorithms,
+documentation, branding ("Vellox"), and trademarks, is the sole and exclusive
+intellectual property of Guilherme Men ("Author"). This Software is protected by
+international copyright, trademark, and intellectual property laws.
+
+2. GRANT OF LIMITED USE LICENSE
+Subject to the terms and conditions of this Agreement, the Author hereby grants
+you a personal, non-exclusive, non-transferable, revocable, limited license to:
+  (a) Execute and run the compiled CLI tool and SDKs ("Software") for analyzing,
+      monitoring, and optimizing your own software applications and databases.
+  (b) View the source code for auditing, security verification, and evaluation purposes.
+
+3. STRICT RESTRICTIONS & PROHIBITIONS
+You expressly agree that you shall NOT, and shall not permit or assist any third party to:
+  (a) Copy, reproduce, clone, or duplicate the source code, architecture, or design
+      in whole or in part without express prior written consent from Guilherme Men.
+  (b) Re-license, sub-license, sell, rent, lease, distribute, or commercially exploit
+      the Software or any portion thereof as a standalone product or service.
+  (c) Re-brand, re-name, white-label, or remove any copyright notices, headers,
+      author attributions, or trademarks from the Software.
+  (d) Create derivative works, competing products, or fork the repository for public
+      redistribution under another name or license.
+  (e) Reverse engineer, decompile, or disassemble any binary or obfuscated parts of
+      the Software, except to the extent permitted by mandatory applicable law.
+
+4. COMMERCIAL INQUIRIES & PERMISSIONS
+Any commercial distribution, customized licensing, partnership, or enterprise usage
+exceeding the standard evaluation scope defined in Section 2 requires an explicit
+written commercial agreement executed with Guilherme Men.
+
+5. TERMINATION
+This Agreement and your right to use the Software will automatically terminate
+immediately if you breach any term or condition of this Agreement. Upon termination,
+you must immediately cease all use of the Software and destroy all copies in your possession.
+
+6. DISCLAIMER OF WARRANTIES & LIMITATION OF LIABILITY
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE.

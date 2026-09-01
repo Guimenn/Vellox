@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "infrawaste-agent"
+version = "0.1.0"
+description = "High-Scale Performance, Database & Infrastructure Waste Detection Python Agent"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "urllib3>=2.0.0"
+]
+
+[project.optional-dependencies]
+fastapi = ["fastapi>=0.100.0", "starlette>=0.27.0"]
+sqlalchemy = ["sqlalchemy>=2.0.0"]
+test = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0"]

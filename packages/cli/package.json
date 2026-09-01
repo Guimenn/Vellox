@@ -1,0 +1,42 @@
+{
+  "name": "vellox",
+  "version": "0.1.1",
+  "description": "Vellox - High-Scale Performance, Database & Infrastructure Waste Detection CLI",
+  "bin": {
+    "vellox": "./dist/bin.js"
+  },
+  "main": "./dist/bin.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/bin.ts --format cjs,esm --clean",
+    "start": "node ./dist/bin.js",
+    "prepublishOnly": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "vellox",
+    "infrawaste",
+    "finops",
+    "performance",
+    "database-optimizer",
+    "sql",
+    "prisma",
+    "nplus1",
+    "postgres",
+    "mysql",
+    "mongodb",
+    "redis",
+    "cli"
+  ],
+  "author": "Guilherme Men",
+  "license": "SEE LICENSE IN LICENSE",
+  "devDependencies": {
+    "tsup": "^8.3.6",
+    "typescript": "^5.7.3"
+  }
+}

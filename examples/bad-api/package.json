@@ -1,0 +1,27 @@
+{
+  "name": "@infrawaste/example-bad-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sample API demonstrating baseline vs instrumented high-scale endpoints",
+  "type": "module",
+  "scripts": {
+    "start": "node --loader ts-node/esm src/server.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@infrawaste/core": "workspace:*",
+    "@infrawaste/agent-node": "workspace:*",
+    "@infrawaste/db-core": "workspace:*",
+    "@infrawaste/db-postgres": "workspace:*",
+    "@infrawaste/db-mongodb": "workspace:*",
+    "@infrawaste/db-redis": "workspace:*",
+    "@infrawaste/cost-engine": "workspace:*",
+    "@infrawaste/analyzer": "workspace:*",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.5",
+    "typescript": "^5.7.3"
+  }
+}

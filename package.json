@@ -1,0 +1,32 @@
+{
+  "name": "vellox-workspace",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Vellox - High-Scale Performance, Database & Infrastructure Waste Intelligence Engine",
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "build": "pnpm --filter \"./packages/*\" run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "benchmark": "pnpm --filter \"@infrawaste/benchmark-agent-overhead\" run start",
+    "cli": "node packages/cli/dist/bin.js",
+    "demo": "node packages/cli/dist/bin.js demo",
+    "start:collector": "pnpm --filter \"@infrawaste/collector\" run start",
+    "start:bad-api": "pnpm --filter \"@infrawaste/bad-api\" run start",
+    "doctor": "node packages/cli/dist/bin.js doctor"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.5",
+    "@types/supertest": "^6.0.2",
+    "express": "^4.21.2",
+    "supertest": "^7.0.0",
+    "tsup": "^8.3.6",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "Apache-2.0"
+}
