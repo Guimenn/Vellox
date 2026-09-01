@@ -1,0 +1,9 @@
+{
+  "serviceName": "cli",
+  "environment": "production",
+  "flushIntervalMs": 5000,
+  "maxMemoryBytes": 31457280,
+  "cardinality": {
+    "maxUniqueRoutes": 500
+  }
+}

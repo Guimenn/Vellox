@@ -266,124 +266,129 @@ function handleOptimize(customTarget?: string) {
         }
       }
 
-      // 4. Scan for raw SQL statements in source code
-      lines.forEach((lineText, idx) => {
-        if (/(SELECT\s+[\s\S]+?FROM\s+["`]?(\w+)["`]?)/i.test(lineText)) {
-          scannedQueries.push({
-            file: path.relative(cwd, file),
-            line: idx + 1,
-            query: lineText.trim()
-          });
+      // 4. Scan for raw SQL statements in source code (skip CLI binary itself)
+      if (!file.includes('bin.') && !file.includes('/dist/')) {
+        lines.forEach((lineText, idx) => {
+          if (/(SELECT\s+[\s\S]+?FROM\s+["`]?(\w+)["`]?)/i.test(lineText)) {
+            scannedQueries.push({
+              file: path.relative(cwd, file),
+              line: idx + 1,
+              query: lineText.trim()
+            });
 
-          // Check if SELECT *
-          if (/SELECT\s+\*\s+FROM\s+["`]?(\w+)["`]?/i.test(lineText)) {
-            const match = /FROM\s+["`]?(\w+)["`]?/i.exec(lineText);
-            const table = match ? match[1] : 'table';
-            generatedFixes.push(
-              `-- Recommended index for queries on ${table} (found in ${path.relative(cwd, file)}:${idx + 1})\nCREATE INDEX CONCURRENTLY IF NOT EXISTS idx_${table}_lookup ON ${table} (id);`
-            );
+            // Check if SELECT *
+            if (/SELECT\s+\*\s+FROM\s+["`]?(\w+)["`]?/i.test(lineText)) {
+              const match = /FROM\s+["`]?(\w+)["`]?/i.exec(lineText);
+              const table = match ? match[1] : 'table';
+              generatedFixes.push(
+                `-- Recommended index for queries on ${table} (found in ${path.relative(cwd, file)}:${idx + 1})\nCREATE INDEX CONCURRENTLY IF NOT EXISTS idx_${table}_lookup ON ${table} (id);`
+              );
+            }
           }
-        }
-      });
+        });
+      }
+
       // 5. Scan for Exposed API Keys & Hardcoded Credentials
-      lines.forEach((lineText, idx) => {
-        if (lineText.includes('@vellox-ignore') || lineText.includes('placeholder') || lineText.includes('your-key')) return;
+      if (!file.includes('bin.') && !file.includes('/dist/')) {
+        lines.forEach((lineText, idx) => {
+          if (lineText.includes('@vellox-ignore') || lineText.includes('placeholder') || lineText.includes('your-key')) return;
 
-        // a) Google Gemini / Maps / Cloud API Key: AIzaSy... (39 chars)
-        const geminiMatch = /\b(AIzaSy[a-zA-Z0-9_-]{33})\b/.exec(lineText);
-        if (geminiMatch) {
-          exposedSecrets.push({
-            file: path.relative(cwd, file),
-            line: idx + 1,
-            type: 'Google Gemini / Cloud API Key',
-            secret: redactSecret(geminiMatch[1]!),
-            fix: 'Move API Key to .env environment variable and add .env to .gitignore'
-          });
-        }
+          // a) Google Gemini / Maps / Cloud API Key: AIzaSy... (39 chars)
+          const geminiMatch = /\b(AIzaSy[a-zA-Z0-9_-]{33})\b/.exec(lineText);
+          if (geminiMatch) {
+            exposedSecrets.push({
+              file: path.relative(cwd, file),
+              line: idx + 1,
+              type: 'Google Gemini / Cloud API Key',
+              secret: redactSecret(geminiMatch[1]!),
+              fix: 'Move API Key to .env environment variable and add .env to .gitignore'
+            });
+          }
 
-        // b) OpenAI Key: sk-... or sk-proj-...
-        const openaiMatch = /\b(sk-(?:proj-)?[a-zA-Z0-9_-]{20,})\b/.exec(lineText);
-        if (openaiMatch) {
-          exposedSecrets.push({
-            file: path.relative(cwd, file),
-            line: idx + 1,
-            type: 'OpenAI Secret API Key',
-            secret: redactSecret(openaiMatch[1]!),
-            fix: 'Revoke key immediately in OpenAI dashboard and move to OPENAI_API_KEY in .env'
-          });
-        }
+          // b) OpenAI Key: sk-... or sk-proj-...
+          const openaiMatch = /\b(sk-(?:proj-)?[a-zA-Z0-9_-]{20,})\b/.exec(lineText);
+          if (openaiMatch) {
+            exposedSecrets.push({
+              file: path.relative(cwd, file),
+              line: idx + 1,
+              type: 'OpenAI Secret API Key',
+              secret: redactSecret(openaiMatch[1]!),
+              fix: 'Revoke key immediately in OpenAI dashboard and move to OPENAI_API_KEY in .env'
+            });
+          }
 
-        // c) Anthropic Claude Key: sk-ant-...
-        const anthropicMatch = /\b(sk-ant-[a-zA-Z0-9_-]{20,})\b/.exec(lineText);
-        if (anthropicMatch) {
-          exposedSecrets.push({
-            file: path.relative(cwd, file),
-            line: idx + 1,
-            type: 'Anthropic Claude API Key',
-            secret: redactSecret(anthropicMatch[1]!),
-            fix: 'Move secret to ANTHROPIC_API_KEY environment variable'
-          });
-        }
+          // c) Anthropic Claude Key: sk-ant-...
+          const anthropicMatch = /\b(sk-ant-[a-zA-Z0-9_-]{20,})\b/.exec(lineText);
+          if (anthropicMatch) {
+            exposedSecrets.push({
+              file: path.relative(cwd, file),
+              line: idx + 1,
+              type: 'Anthropic Claude API Key',
+              secret: redactSecret(anthropicMatch[1]!),
+              fix: 'Move secret to ANTHROPIC_API_KEY environment variable'
+            });
+          }
 
-        // d) AWS Access Key ID: AKIA...
-        const awsMatch = /\b(AKIA[0-9A-Z]{16})\b/.exec(lineText);
-        if (awsMatch) {
-          exposedSecrets.push({
-            file: path.relative(cwd, file),
-            line: idx + 1,
-            type: 'AWS Access Key ID',
-            secret: redactSecret(awsMatch[1]!),
-            fix: 'Use AWS IAM Roles or AWS_ACCESS_KEY_ID in .env'
-          });
-        }
+          // d) AWS Access Key ID: AKIA...
+          const awsMatch = /\b(AKIA[0-9A-Z]{16})\b/.exec(lineText);
+          if (awsMatch) {
+            exposedSecrets.push({
+              file: path.relative(cwd, file),
+              line: idx + 1,
+              type: 'AWS Access Key ID',
+              secret: redactSecret(awsMatch[1]!),
+              fix: 'Use AWS IAM Roles or AWS_ACCESS_KEY_ID in .env'
+            });
+          }
 
-        // e) Stripe Secret Key: sk_live_... / rk_live_...
-        const stripeMatch = /\b((?:sk|rk)_live_[0-9a-zA-Z]{24})\b/.exec(lineText);
-        if (stripeMatch) {
-          exposedSecrets.push({
-            file: path.relative(cwd, file),
-            line: idx + 1,
-            type: 'Stripe Live Secret Key (Financial Risk)',
-            secret: redactSecret(stripeMatch[1]!),
-            fix: 'CRITICAL: Revoke live key in Stripe Dashboard and move to STRIPE_SECRET_KEY'
-          });
-        }
+          // e) Stripe Secret Key: sk_live_... / rk_live_...
+          const stripeMatch = /\b((?:sk|rk)_live_[0-9a-zA-Z]{24})\b/.exec(lineText);
+          if (stripeMatch) {
+            exposedSecrets.push({
+              file: path.relative(cwd, file),
+              line: idx + 1,
+              type: 'Stripe Live Secret Key (Financial Risk)',
+              secret: redactSecret(stripeMatch[1]!),
+              fix: 'CRITICAL: Revoke live key in Stripe Dashboard and move to STRIPE_SECRET_KEY'
+            });
+          }
 
-        // f) GitHub Personal Access Token: ghp_...
-        const ghMatch = /\b(ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{22,})\b/.exec(lineText);
-        if (ghMatch) {
-          exposedSecrets.push({
-            file: path.relative(cwd, file),
-            line: idx + 1,
-            type: 'GitHub Personal Access Token',
-            secret: redactSecret(ghMatch[1]!),
-            fix: 'Revoke token on GitHub Settings and move to GITHUB_TOKEN in .env'
-          });
-        }
+          // f) GitHub Personal Access Token: ghp_...
+          const ghMatch = /\b(ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{22,})\b/.exec(lineText);
+          if (ghMatch) {
+            exposedSecrets.push({
+              file: path.relative(cwd, file),
+              line: idx + 1,
+              type: 'GitHub Personal Access Token',
+              secret: redactSecret(ghMatch[1]!),
+              fix: 'Revoke token on GitHub Settings and move to GITHUB_TOKEN in .env'
+            });
+          }
 
-        // g) Database URI with Hardcoded Password
-        const dbUriMatch = /\b((?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^:\s'"]+:([^@\s'"]+)@[^\s"']+)\b/.exec(lineText);
-        if (dbUriMatch && !lineText.includes('user:password') && !lineText.includes('root:password') && !lineText.includes('localhost') && dbUriMatch[2] !== 'password' && dbUriMatch[2] !== 'secret') {
-          exposedSecrets.push({
-            file: path.relative(cwd, file),
-            line: idx + 1,
-            type: 'Plaintext Database Connection String with Credentials',
-            secret: redactSecret(dbUriMatch[1]!),
-            fix: 'Store DATABASE_URL in .env and use environment variable injection'
-          });
-        }
+          // g) Database URI with Hardcoded Password
+          const dbUriMatch = /\b((?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^:\s'"]+:([^@\s'"]+)@[^\s"']+)\b/.exec(lineText);
+          if (dbUriMatch && !lineText.includes('user:password') && !lineText.includes('root:password') && !lineText.includes('localhost') && dbUriMatch[2] !== 'password' && dbUriMatch[2] !== 'secret') {
+            exposedSecrets.push({
+              file: path.relative(cwd, file),
+              line: idx + 1,
+              type: 'Plaintext Database Connection String with Credentials',
+              secret: redactSecret(dbUriMatch[1]!),
+              fix: 'Store DATABASE_URL in .env and use environment variable injection'
+            });
+          }
 
-        // h) RSA/Private Key
-        if (/-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/.test(lineText)) {
-          exposedSecrets.push({
-            file: path.relative(cwd, file),
-            line: idx + 1,
-            type: 'Unencrypted Private Key Certificate',
-            secret: '-----BEGIN PRIVATE KEY-----...',
-            fix: 'Never commit private keys to repository. Use Secrets Manager or .pem in .gitignore'
-          });
-        }
-      });
+          // h) RSA/Private Key
+          if (/-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/.test(lineText) && !lineText.includes('?:RSA')) {
+            exposedSecrets.push({
+              file: path.relative(cwd, file),
+              line: idx + 1,
+              type: 'Unencrypted Private Key Certificate',
+              secret: '-----BEGIN PRIVATE KEY-----...',
+              fix: 'Never commit private keys to repository. Use Secrets Manager or .pem in .gitignore'
+            });
+          }
+        });
+      }
     } catch {}
   }
 
@@ -511,7 +516,7 @@ function handleDemo() {
   console.log('     ├─ Impact: Prevents cluster freezes | Est. Savings: ~$420/mo | Conf: 97%');
   console.log('     └─ Action: Replace KEYS * with iterative SCAN cursor');
   console.log('');
-  console.log('✨ To launch the Executive Web UI: pnpm --filter "@infrawaste/dashboard" run start\n');
+  console.log('✨ For interactive visualizer & FinOps ROI calculator: open website/index.html\n');
 }
 
 function handleAiPrompt() {
