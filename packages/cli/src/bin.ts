@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const VERSION = '0.1.1';
+const VERSION = '0.1.5';
 
 function printHeader() {
   console.log(`
