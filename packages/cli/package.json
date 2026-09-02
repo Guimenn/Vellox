@@ -3,7 +3,7 @@
   "version": "0.1.8",
   "description": "Vellox - High-Scale Performance, Database & Infrastructure Waste Detection CLI",
   "bin": {
-    "vellox": "./dist/bin.js"
+    "vellox": "dist/bin.js"
   },
   "main": "./dist/bin.js",
   "files": [
