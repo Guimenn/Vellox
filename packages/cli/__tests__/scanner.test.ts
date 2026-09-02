@@ -83,6 +83,38 @@ describe('Vellox project scanner contract', () => {
     expect(evaluation.evaluatedFindings).toHaveLength(0);
   });
 
+  it('keeps baseline fingerprints stable when unrelated lines move a finding', () => {
+    const directory = fixture();
+    const baseline = scanProject(directory, 'test');
+    const originalLoop = baseline.findings.find(item => item.ruleId === 'code/sequential-async-loop');
+    const sourcePath = path.join(directory, 'src', 'orders.ts');
+    fs.writeFileSync(sourcePath, `// unrelated header\n\n${fs.readFileSync(sourcePath, 'utf8')}`);
+
+    const current = scanProject(directory, 'test');
+    const movedLoop = current.findings.find(item => item.ruleId === 'code/sequential-async-loop');
+    const evaluation = evaluateBudgets(current, {
+      maxCritical: 0,
+      maxHigh: 0,
+      maxTotal: 0,
+      failOnSecrets: true
+    }, baseline);
+
+    expect(evaluation.evaluatedFindings).toHaveLength(0);
+    expect(movedLoop?.line).toBe(5);
+    expect(movedLoop?.fingerprint).toBe(originalLoop?.fingerprint);
+
+    const legacyBaseline = {
+      ...baseline,
+      findings: baseline.findings.map((item, index) => ({ ...item, fingerprint: `legacy-${index}-${item.line}` }))
+    };
+    expect(evaluateBudgets(current, {
+      maxCritical: 0,
+      maxHigh: 0,
+      maxTotal: 0,
+      failOnSecrets: true
+    }, legacyBaseline).evaluatedFindings).toHaveLength(0);
+  });
+
   it('emits SARIF locations and stable fingerprints', () => {
     const report = scanProject(fixture(), 'test');
     const sarif = toSarif(report) as { runs: Array<{ results: Array<Record<string, unknown>> }> };
@@ -222,6 +254,36 @@ ${'A'.repeat(80)}
     expect(findings[0]?.severity).toBe('MEDIUM');
   });
 
+  it('keeps identical findings in separate loops distinct and baseline-stable', () => {
+    const directory = fixture();
+    const sourcePath = path.join(directory, 'src', 'duplicates.ts');
+    fs.writeFileSync(sourcePath, `export async function first(items) {
+  for (const item of items) {
+    await db.query(item);
+  }
+}
+export async function second(items) {
+  for (const item of items) {
+    await db.query(item);
+  }
+}
+`);
+    const baseline = scanProject(directory, 'test');
+    fs.writeFileSync(sourcePath, `// line shift\n${fs.readFileSync(sourcePath, 'utf8')}`);
+    const current = scanProject(directory, 'test');
+    const before = baseline.findings.filter(item => item.file === 'src/duplicates.ts');
+    const after = current.findings.filter(item => item.file === 'src/duplicates.ts');
+
+    expect(before).toHaveLength(2);
+    expect(new Set(before.map(item => item.fingerprint))).toEqual(new Set(after.map(item => item.fingerprint)));
+    expect(evaluateBudgets(current, {
+      maxCritical: 0,
+      maxHigh: 0,
+      maxTotal: 0,
+      failOnSecrets: true
+    }, baseline).evaluatedFindings).toHaveLength(0);
+  });
+
   it('analyzes plain and multiline SQL files instead of requiring string literals', () => {
     const directory = fixture();
     fs.writeFileSync(path.join(directory, 'queries.sql'), `-- production lookup
@@ -340,17 +402,53 @@ spec:
       containers:
         - name: api
           image: example/api@sha256:abcdef
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
+          resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
 `);
 
     const report = scanProject(directory, 'test');
 
     expect(report.findings.some(item => item.category === 'infrastructure')).toBe(false);
+  });
+
+  it('evaluates the effective user in the final Docker stage', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'Dockerfile'), `FROM node:22.12.0 AS build
+USER node
+RUN npm run build
+FROM node:22.12.0
+USER root
+COPY --from=build /app /app
+`);
+
+    const report = scanProject(directory, 'test');
+    const finding = report.findings.find(item => item.ruleId === 'infra/container-root-user');
+
+    expect(finding?.line).toBe(5);
+    expect(finding?.evidence).toContain('root');
+  });
+
+  it('requires CPU and memory in both Kubernetes requests and limits', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'deployment.yaml'), `apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: example/api:1.2.3
+          resources:
+            requests:
+              cpu: 100m
+            limits:
+              memory: 512Mi
+`);
+
+    const report = scanProject(directory, 'test');
+    const finding = report.findings.find(item => item.ruleId === 'infra/kubernetes-partial-resources');
+
+    expect(finding?.evidence).toContain('requests.memory');
+    expect(finding?.evidence).toContain('limits.cpu');
+    expect(finding?.metadata?.missing).toBe('requests.memory,limits.cpu');
   });
 });

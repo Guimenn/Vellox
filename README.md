@@ -78,7 +78,7 @@ npx vellox explain plan.json
 | --- | --- |
 | **Application code** | Sequential async loops, synchronous Python database loops, N+1 risks, unbounded in-memory stores, hardcoded credentials |
 | **SQL & ORM** | Plain and embedded SQL, `SELECT *`, missing pagination, leading wildcards, deep offsets, missing FK indexes, Prisma and Drizzle schema gaps |
-| **Infrastructure config** | Floating container images, root containers, Kubernetes resource gaps and privileged workloads, Terraform public database/storage/ingress exposure |
+| **Infrastructure config** | Floating container images, effective final-stage users, complete Kubernetes CPU/memory policies and privileged workloads, Terraform public database/storage/ingress exposure |
 | **Execution plans** | PostgreSQL JSON plan nodes, sequential scans, external sorts, and buffer hit/read evidence |
 | **Security** | Supported API tokens, private keys, and credential-bearing database URLs with redacted output |
 
@@ -129,7 +129,7 @@ npx vellox explain plan.json
 
 ## Proof, not promises
 
-The repository currently passes **90 automated tests** (87 TypeScript + 3 Python), including CLI contract tests for the documented workflows and adversarial fixtures for SQL files, synchronous Python queries, containers, Kubernetes, and Terraform.
+The repository currently passes **94 automated tests** (91 TypeScript + 3 Python), including CLI contract tests for the documented workflows and adversarial fixtures for stable/legacy baselines, repeated findings, SQL files, synchronous Python queries, multi-stage containers, Kubernetes, and Terraform.
 
 Reproduce the checks on your machine:
 

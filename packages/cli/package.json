@@ -1,6 +1,6 @@
 {
   "name": "vellox",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Local evidence-first scanner for code, SQL, ORM schemas, and CI",
   "bin": {
     "vellox": "dist/bin.js"

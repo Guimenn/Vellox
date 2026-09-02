@@ -95,8 +95,33 @@ export function evaluateBudgets(
   budgets: VelloxBudgets,
   baseline?: VelloxReport
 ): BudgetEvaluation {
-  const baselineFingerprints = new Set((baseline?.findings || []).map(item => item.fingerprint));
-  const evaluated = report.findings.filter(item => !baselineFingerprints.has(item.fingerprint));
+  const semanticIdentity = (item: VelloxFinding): string => [
+    item.ruleId,
+    item.file || '',
+    item.evidence.trim().replace(/\s+/g, ' ')
+  ].join('|');
+  const increment = (counts: Map<string, number>, key: string): void => counts.set(key, (counts.get(key) || 0) + 1);
+  const decrement = (counts: Map<string, number>, key: string): boolean => {
+    const count = counts.get(key) || 0;
+    if (!count) return false;
+    if (count === 1) counts.delete(key);
+    else counts.set(key, count - 1);
+    return true;
+  };
+  const baselineFingerprints = new Map<string, number>();
+  const baselineIdentities = new Map<string, number>();
+  for (const item of baseline?.findings || []) {
+    increment(baselineFingerprints, item.fingerprint);
+    increment(baselineIdentities, semanticIdentity(item));
+  }
+  const evaluated = report.findings.filter(item => {
+    const identity = semanticIdentity(item);
+    if (decrement(baselineFingerprints, item.fingerprint)) {
+      decrement(baselineIdentities, identity);
+      return false;
+    }
+    return !decrement(baselineIdentities, identity);
+  });
   const critical = evaluated.filter(item => item.severity === 'CRITICAL').length;
   const high = evaluated.filter(item => item.severity === 'HIGH').length;
   const secrets = evaluated.filter(item => item.category === 'security').length;

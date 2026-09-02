@@ -13,7 +13,11 @@ const SOURCE_FILE = /(?:\.(?:cjs|env|js|json|jsx|mjs|prisma|py|sql|tf|tfvars|tom
 interface FindingInput extends Omit<VelloxFinding, 'fingerprint'> {}
 
 function fingerprint(input: FindingInput): string {
-  const identity = [input.ruleId, input.file || '', input.line || 0, input.evidence].join('|');
+  // A baseline represents the finding itself, not its current position. Keeping
+  // line numbers out of the identity prevents unrelated edits above a finding
+  // from making CI report it as new.
+  const normalizedEvidence = input.evidence.trim().replace(/\s+/g, ' ');
+  const identity = [input.ruleId, input.file || '', normalizedEvidence].join('|');
   return createHash('sha256').update(identity).digest('hex').slice(0, 20);
 }
 
@@ -215,13 +219,28 @@ function scanDockerfile(content: string, relativeFile: string): VelloxFinding[] 
       file: relativeFile, line: lineNumberAt(content, match.index)
     }));
   }
-  if (fromLines.some(match => match[1] !== 'scratch') && !/^\s*USER\s+\S+/mi.test(content)) {
+
+  const finalStage = fromLines.at(-1);
+  const finalStageContent = finalStage ? content.slice(finalStage.index) : content;
+  const finalUsers = [...finalStageContent.matchAll(/^\s*USER\s+(\S+)/gim)];
+  const finalUser = finalUsers.at(-1);
+  const finalUserValue = finalUser?.[1]?.split(':')[0]?.toLowerCase();
+  const dynamicUser = Boolean(finalUserValue && /[$<>{}]/.test(finalUserValue));
+  const rootUser = finalUserValue === 'root' || /^0+$/.test(finalUserValue || '');
+  if (fromLines.length && (!finalUser || rootUser || dynamicUser)) {
+    const finalStageOffset = finalStage?.index || 0;
+    const userOffset = finalUser ? finalStageOffset + finalUser.index : finalStageOffset;
+    const evidence = !finalUser
+      ? 'The final image stage has no USER instruction.'
+      : dynamicUser
+        ? `The final image stage selects dynamic user ${finalUser![1]}, whose privilege cannot be verified statically.`
+        : `The final image stage explicitly selects privileged user ${finalUser![1]}.`;
     results.push(finding({
       ruleId: 'infra/container-root-user', severity: 'MEDIUM', category: 'infrastructure',
-      title: 'Container has no explicit non-root user',
-      evidence: 'No USER instruction was found in the Dockerfile.',
+      title: 'Container final stage has no verified non-root user',
+      evidence,
       recommendation: 'Create and select a least-privileged runtime user in the final stage.',
-      file: relativeFile, line: fromLines.length ? lineNumberAt(content, fromLines.at(-1)!.index) : 1
+      file: relativeFile, line: lineNumberAt(content, userOffset)
     }));
   }
   return results;
@@ -278,6 +297,42 @@ function yamlContainerBlocks(content: string): Array<{ content: string; startLin
   return results;
 }
 
+function yamlNestedBlock(content: string, key: string): { content: string; line: number } | undefined {
+  const inlineMapping = new RegExp(`(?:^|[,{])\\s*${key}:\\s*\\{([^{}]*)\\}`, 'i').exec(content);
+  if (inlineMapping) {
+    return { content: inlineMapping[1]!, line: lineNumberAt(content, inlineMapping.index) };
+  }
+  const lines = content.split('\n');
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = new RegExp(`^(\\s*)${key}:\\s*(.*)$`, 'i').exec(lines[index]!);
+    if (!match) continue;
+    const inline = match[2]!.trim();
+    if (inline) return { content: inline, line: index + 1 };
+    const indent = indentationOf(match[1]!);
+    let end = index + 1;
+    for (; end < lines.length; end += 1) {
+      const line = lines[end]!;
+      if (line.trim() && indentationOf(line) <= indent) break;
+    }
+    return { content: lines.slice(index + 1, end).join('\n'), line: index + 1 };
+  }
+  return undefined;
+}
+
+function missingKubernetesResources(container: string): string[] | undefined {
+  const resources = yamlNestedBlock(container, 'resources');
+  if (!resources) return undefined;
+  const missing: string[] = [];
+  for (const policy of ['requests', 'limits']) {
+    const block = yamlNestedBlock(resources.content, policy);
+    for (const dimension of ['cpu', 'memory']) {
+      const hasDimension = block && new RegExp(`(?:^|[,\\s{])${dimension}\\s*:`, 'im').test(block.content);
+      if (!hasDimension) missing.push(`${policy}.${dimension}`);
+    }
+  }
+  return missing;
+}
+
 function scanYamlInfrastructure(content: string, relativeFile: string): VelloxFinding[] {
   const results: VelloxFinding[] = [];
   const compose = /(?:^|\/)(?:docker-)?compose(?:\.[^/]+)?\.ya?ml$/i.test(relativeFile);
@@ -286,8 +341,8 @@ function scanYamlInfrastructure(content: string, relativeFile: string): VelloxFi
     const kubernetes = Boolean(/^\s*apiVersion:\s*\S+/mi.test(document.content) && kind);
     if (kubernetes && /^(?:CronJob|DaemonSet|Deployment|Job|Pod|StatefulSet)$/i.test(kind!)) {
       for (const container of yamlContainerBlocks(document.content)) {
-        const resourceLine = /^\s*resources:\s*$/mi.exec(container.content);
-        if (!resourceLine) {
+        const resources = yamlNestedBlock(container.content, 'resources');
+        if (!resources) {
           results.push(finding({
             ruleId: 'infra/kubernetes-missing-resources', severity: 'MEDIUM', category: 'infrastructure',
             title: 'Kubernetes container has no resource policy',
@@ -297,13 +352,15 @@ function scanYamlInfrastructure(content: string, relativeFile: string): VelloxFi
           }));
           continue;
         }
-        if (!/^\s*requests:\s*$/mi.test(container.content) || !/^\s*limits:\s*$/mi.test(container.content)) {
+        const missing = missingKubernetesResources(container.content) || [];
+        if (missing.length) {
           results.push(finding({
             ruleId: 'infra/kubernetes-partial-resources', severity: 'MEDIUM', category: 'infrastructure',
             title: 'Kubernetes container resource policy is incomplete',
-            evidence: `${kind} container ${container.name} does not declare both requests and limits.`,
+            evidence: `${kind} container ${container.name} is missing ${missing.join(', ')}.`,
             recommendation: 'Define measured CPU/memory requests and limits; validate them against runtime telemetry.',
-            file: relativeFile, line: document.startLine + container.startLine + lineNumberAt(container.content, resourceLine.index) - 2
+            file: relativeFile, line: document.startLine + container.startLine + resources.line - 2,
+            metadata: { missing: missing.join(',') }
           }));
         }
       }
@@ -809,7 +866,22 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
     if (databaseContext.detected && /\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file)) findings.push(...scanRawQueries(content, relative));
   }
 
-  const unique = [...new Map(findings.map(item => [item.fingerprint, item])).values()];
+  // Collapse only duplicate emissions for the exact same location, then keep
+  // repeated semantic findings distinct with a stable occurrence suffix.
+  const locationUnique = [...new Map(findings.map(item => [
+    [item.ruleId, item.file || '', item.line || 0, item.evidence].join('|'),
+    item
+  ])).values()];
+  const occurrences = new Map<string, number>();
+  const unique = locationUnique.map(item => {
+    const occurrence = occurrences.get(item.fingerprint) || 0;
+    occurrences.set(item.fingerprint, occurrence + 1);
+    if (occurrence === 0) return item;
+    return {
+      ...item,
+      fingerprint: createHash('sha256').update(`${item.fingerprint}|occurrence:${occurrence}`).digest('hex').slice(0, 20)
+    };
+  });
   const severityRank: Record<Severity, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
   unique.sort((left, right) => severityRank[left.severity] - severityRank[right.severity]
     || (left.file || '').localeCompare(right.file || '') || (left.line || 0) - (right.line || 0));
