@@ -221,4 +221,136 @@ ${'A'.repeat(80)}
     expect(findings).toHaveLength(1);
     expect(findings[0]?.severity).toBe('MEDIUM');
   });
+
+  it('analyzes plain and multiline SQL files instead of requiring string literals', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'queries.sql'), `-- production lookup
+SELECT *
+FROM users
+WHERE email LIKE '%@example.com' AND note = '--keep this literal';
+
+WITH active AS (
+  SELECT id FROM accounts WHERE enabled = true
+)
+SELECT * FROM active;
+
+CREATE FUNCTION audit_rows() RETURNS SETOF users AS $$
+BEGIN
+  RETURN QUERY SELECT * FROM users;
+END;
+$$ LANGUAGE plpgsql;
+`);
+
+    const report = scanProject(directory, 'test');
+    const queryFindings = report.findings.filter(item => item.file === 'queries.sql');
+    const rules = queryFindings.map(item => item.ruleId);
+
+    expect(rules).toEqual(expect.arrayContaining([
+      'query/select-star',
+      'query/leading-wildcard',
+      'query/unbounded-select'
+    ]));
+    expect(queryFindings.some(item => item.evidence.includes('--keep this literal'))).toBe(true);
+    expect(queryFindings.some(item => item.evidence.includes('audit_rows'))).toBe(false);
+  });
+
+  it('detects synchronous Python database calls after intermediate loop work', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'sync.py'), `def load_users(ids, session):
+    for user_id in ids:
+        normalized = str(user_id)
+        row = session.execute(select(User).where(User.id == normalized))
+        consume(row)
+    session.execute(select(Audit))
+`);
+
+    const report = scanProject(directory, 'test');
+    const findings = report.findings.filter(item => item.file === 'src/sync.py' && item.ruleId === 'code/synchronous-query-loop');
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.line).toBe(4);
+    expect(findings[0]?.metadata?.loopStart).toBe(2);
+  });
+
+  it('does not turn assertion loops in test files into production hotspots', () => {
+    const directory = fixture();
+    fs.mkdirSync(path.join(directory, 'tests'), { recursive: true });
+    fs.writeFileSync(path.join(directory, 'tests', 'test_models.py'), `def test_empty(models, db):
+    for model in models:
+        assert db.scalar(select(func.count()).select_from(model)) == 0
+`);
+
+    const report = scanProject(directory, 'test');
+
+    expect(report.findings.some(item => item.file === 'tests/test_models.py' && item.ruleId === 'code/synchronous-query-loop')).toBe(false);
+  });
+
+  it('finds reviewable Docker, Kubernetes, and Terraform configuration risks', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'Dockerfile'), 'FROM node:latest\nRUN node --version\n');
+    fs.writeFileSync(path.join(directory, 'deployment.yaml'), `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      hostNetwork: true
+      containers:
+        - name: api
+          image: example/api:latest
+`);
+    fs.writeFileSync(path.join(directory, 'main.tf'), `resource "aws_db_instance" "main" {
+  publicly_accessible = true
+}
+resource "aws_security_group" "api" {
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+`);
+
+    const report = scanProject(directory, 'test');
+    const rules = report.findings.filter(item => item.category === 'infrastructure').map(item => item.ruleId);
+
+    expect(rules).toEqual(expect.arrayContaining([
+      'infra/container-floating-base-image',
+      'infra/container-root-user',
+      'infra/kubernetes-missing-resources',
+      'infra/container-floating-image',
+      'infra/privileged-workload',
+      'infra/terraform-public-database',
+      'infra/terraform-public-ingress'
+    ]));
+    expect(report.summary.infrastructure).toBe(rules.length);
+  });
+
+  it('does not flag pinned least-privilege container manifests with complete resources', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'Dockerfile'), 'FROM node:22.12.0@sha256:abcdef\nUSER 10001\n');
+    fs.writeFileSync(path.join(directory, 'deployment.yaml'), `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: example/api@sha256:abcdef
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+`);
+
+    const report = scanProject(directory, 'test');
+
+    expect(report.findings.some(item => item.category === 'infrastructure')).toBe(false);
+  });
 });

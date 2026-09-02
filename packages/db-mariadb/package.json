@@ -1,6 +1,6 @@
 {
   "name": "@vellox/db-mariadb",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MariaDB performance & waste telemetry adapter for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

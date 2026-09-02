@@ -17,6 +17,7 @@ export function formatPretty(report: VelloxReport): string {
     `  ├─ High:           ${report.summary.high}`,
     `  ├─ Medium:         ${report.summary.medium}`,
     `  ├─ Secrets:        ${report.summary.secrets}`,
+    `  ├─ Infrastructure: ${report.summary.infrastructure ?? 0}`,
     `  └─ SQL suggestions: ${report.summary.reviewableSqlFixes}`,
     ''
   ];
@@ -52,7 +53,7 @@ export function formatMarkdown(report: VelloxReport): string {
   });
   const detail = report.findings.map((item, index) => `### ${index + 1}. ${item.title}\n\n- **Severity:** ${item.severity}\n- **Rule:** \`${item.ruleId}\`\n- **Location:** ${item.file ? `\`${item.file}${item.line ? `:${item.line}` : ''}\`` : 'inline input'}\n- **Evidence:** ${item.evidence}\n- **Recommendation:** ${item.recommendation}${item.sql ? `\n- **Reviewable SQL:**\n\n\`\`\`sql\n${item.sql}\n\`\`\`` : ''}`).join('\n\n');
 
-  return `# Vellox Engineering Report\n\nGenerated from an actual project scan on ${report.generatedAt}.\n\n## Summary\n\n| Metric | Value |\n| --- | ---: |\n| Files inspected | ${report.summary.filesScanned} |\n| Critical findings | ${report.summary.critical} |\n| High findings | ${report.summary.high} |\n| Medium findings | ${report.summary.medium} |\n| Exposed secrets | ${report.summary.secrets} |\n| Reviewable SQL suggestions | ${report.summary.reviewableSqlFixes} |\n\n> Vellox does not invent monetary savings from static analysis. Cost estimates require measured telemetry and an explicit pricing model.\n\n## Findings\n\n${rows.length ? `| Severity | Rule | Finding | Location |\n| --- | --- | --- | --- |\n${rows.join('\n')}\n\n${detail}` : 'No supported high-risk patterns were detected.'}\n`;
+  return `# Vellox Engineering Report\n\nGenerated from an actual project scan on ${report.generatedAt}.\n\n## Summary\n\n| Metric | Value |\n| --- | ---: |\n| Files inspected | ${report.summary.filesScanned} |\n| Critical findings | ${report.summary.critical} |\n| High findings | ${report.summary.high} |\n| Medium findings | ${report.summary.medium} |\n| Exposed secrets | ${report.summary.secrets} |\n| Infrastructure findings | ${report.summary.infrastructure ?? 0} |\n| Reviewable SQL suggestions | ${report.summary.reviewableSqlFixes} |\n\n> Vellox does not invent monetary savings from static analysis. Cost estimates require measured telemetry and an explicit pricing model.\n\n## Findings\n\n${rows.length ? `| Severity | Rule | Finding | Location |\n| --- | --- | --- | --- |\n${rows.join('\n')}\n\n${detail}` : 'No supported high-risk patterns were detected.'}\n`;
 }
 
 function sarifLevel(severity: VelloxFinding['severity']): 'error' | 'warning' | 'note' {

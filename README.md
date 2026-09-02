@@ -40,7 +40,7 @@ No global install. Run it from the root of the project you want to inspect:
 npx vellox
 ```
 
-Vellox scans the current directory and reports code hotspots, risky query patterns, exposed credentials, and missing database indexes. Every command consumes the same evidence artifact:
+Vellox scans the current directory and reports code hotspots, risky query patterns, exposed credentials, missing database indexes, and supported infrastructure-configuration risks. Every command consumes the same evidence artifact:
 
 ```text
 .vellox/report.json
@@ -76,8 +76,9 @@ npx vellox explain plan.json
 
 | Surface | Signals |
 | --- | --- |
-| **Application code** | Sequential async loops, N+1 risks, unbounded in-memory stores, hardcoded credentials |
-| **SQL & ORM** | `SELECT *`, missing pagination, leading wildcards, deep offsets, missing FK indexes, Prisma and Drizzle schema gaps |
+| **Application code** | Sequential async loops, synchronous Python database loops, N+1 risks, unbounded in-memory stores, hardcoded credentials |
+| **SQL & ORM** | Plain and embedded SQL, `SELECT *`, missing pagination, leading wildcards, deep offsets, missing FK indexes, Prisma and Drizzle schema gaps |
+| **Infrastructure config** | Floating container images, root containers, Kubernetes resource gaps and privileged workloads, Terraform public database/storage/ingress exposure |
 | **Execution plans** | PostgreSQL JSON plan nodes, sequential scans, external sorts, and buffer hit/read evidence |
 | **Security** | Supported API tokens, private keys, and credential-bearing database URLs with redacted output |
 
@@ -86,6 +87,7 @@ npx vellox explain plan.json
 - **Advisory by default.** The scanner does not connect to or mutate your production database.
 - **Review before apply.** Generated DDL is written to a migration file for human approval.
 - **Local by default.** The published CLI needs only Node.js 20+; no Docker, Kubernetes, daemon, database, or account is required.
+- **Configuration evidence, not cloud telemetry.** Infrastructure rules inspect repository manifests; Vellox does not call cloud or cluster APIs or claim measured utilization.
 - **No code execution.** Project files are read as text and the report stays on disk.
 - **Redacted credentials.** Secret findings never echo the complete matched value.
 - **Intentional escape hatch.** Use `// @vellox-ignore` for reviewed loops or batch routines.
@@ -119,14 +121,15 @@ npx vellox explain plan.json
 
 | Layer | Supported integrations |
 | --- | --- |
-| **Source** | TypeScript, JavaScript, Python, SQL, JSON, YAML, TOML, and `.env` files |
+| **Source** | TypeScript, JavaScript, Python, plain/embedded SQL, JSON, YAML, TOML, Terraform, Dockerfile, and `.env` files |
 | **Schemas** | Prisma, Drizzle, and SQL DDL |
+| **Infrastructure** | Docker/Containerfile, Docker Compose, Kubernetes manifests, and Terraform |
 | **Outputs** | Terminal, JSON, Markdown, SARIF, baselines, and CI exit codes |
 | **Local runtime** | Node.js 20+; no container or background service required |
 
 ## Proof, not promises
 
-The repository currently passes **85 automated tests** (82 TypeScript + 3 Python), including CLI contract tests that prove the documented scan, report, fix, baseline, gate, SARIF, EXPLAIN, DDL, hook, and CI workflows from actual fixture files.
+The repository currently passes **90 automated tests** (87 TypeScript + 3 Python), including CLI contract tests for the documented workflows and adversarial fixtures for SQL files, synchronous Python queries, containers, Kubernetes, and Terraform.
 
 Reproduce the checks on your machine:
 

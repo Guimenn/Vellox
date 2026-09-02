@@ -1,6 +1,6 @@
 {
   "name": "@vellox/analyzer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Evidence-backed waste intelligence & root cause analysis engine for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

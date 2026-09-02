@@ -1,6 +1,6 @@
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
-export type FindingCategory = 'security' | 'code' | 'database' | 'query';
+export type FindingCategory = 'security' | 'code' | 'database' | 'query' | 'infrastructure';
 
 export interface VelloxFinding {
   fingerprint: string;
@@ -24,6 +24,7 @@ export interface VelloxSummary {
   medium: number;
   low: number;
   secrets: number;
+  infrastructure: number;
   reviewableSqlFixes: number;
 }
 

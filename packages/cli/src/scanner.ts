@@ -8,7 +8,7 @@ const IGNORED_DIRECTORIES = new Set([
   '.pytest_cache', '.ruff_cache', '.test-build', '.teste-build', '__pycache__',
   'build', 'coverage', 'dist', 'node_modules', 'vendor'
 ]);
-const SOURCE_FILE = /(?:\.(?:cjs|env|js|json|jsx|mjs|prisma|py|sql|toml|ts|tsx|yaml|yml)$|^\.env(?:\..+)?$|^Pipfile$|^requirements(?:\.[\w-]+)?\.txt$)/i;
+const SOURCE_FILE = /(?:\.(?:cjs|env|js|json|jsx|mjs|prisma|py|sql|tf|tfvars|toml|ts|tsx|yaml|yml)$|^(?:Dockerfile|Containerfile)(?:\..+)?$|^\.env(?:\..+)?$|^Pipfile$|^requirements(?:\.[\w-]+)?\.txt$)/i;
 
 interface FindingInput extends Omit<VelloxFinding, 'fingerprint'> {}
 
@@ -104,7 +104,7 @@ function scanPrisma(content: string, relativeFile: string): VelloxFinding[] {
       .flatMap(match => match[1]!.split(',').map(value => value.trim()).filter(Boolean));
 
     for (const field of new Set(relationFields)) {
-      const hasIndex = new RegExp(`@@(?:index|unique)\\(\\s*\\[[^\\]]*\\b${field}\\b`).test(body)
+      const hasIndex = new RegExp(`@@(?:index|unique)\\(\\s*\\[\\s*${field}\\b`).test(body)
         || new RegExp(`^\\s*${field}\\s+[^\\n]*@unique`, 'm').test(body);
       if (hasIndex) continue;
       const evidence = `Model ${modelName} relation field ${field} has no @@index/@@unique coverage.`;
@@ -163,8 +163,13 @@ function scanSqlSchema(content: string, relativeFile: string): VelloxFinding[] {
     const tableName = table[1]!.split('.').pop()!;
     const body = table[2]!;
     const tableLine = content.slice(0, table.index).split('\n').length;
-    for (const foreignKey of body.matchAll(/FOREIGN\s+KEY\s*\(\s*["`]?([\w]+)["`]?\s*\)\s*REFERENCES\s+["`]?[\w.]+["`]?/gi)) {
-      const column = foreignKey[1]!;
+    const foreignKeyColumns = new Set([
+      ...[...body.matchAll(/FOREIGN\s+KEY\s*\(\s*["`]?([\w]+)["`]?\s*\)\s*REFERENCES\s+["`]?[\w.]+["`]?/gi)].map(match => match[1]!),
+      ...[...body.matchAll(/^\s*["`]?([\w]+)["`]?\s+[^,\n]+\bREFERENCES\s+["`]?[\w.]+["`]?/gim)]
+        .map(match => match[1]!)
+        .filter(column => !/^(?:constraint|foreign|primary|unique)$/i.test(column))
+    ]);
+    for (const column of foreignKeyColumns) {
       const optionalQuote = '["`]?' ;
       const indexed = new RegExp('(?<!FOREIGN\\s)(?:INDEX|KEY|UNIQUE)[^;\\n]*\\(\\s*' + optionalQuote + column + optionalQuote, 'i').test(body)
         || new RegExp('CREATE\\s+(?:UNIQUE\\s+)?INDEX[\\s\\S]*?ON\\s+' + optionalQuote + tableName + optionalQuote + '[\\s\\S]*?\\(\\s*' + optionalQuote + column + optionalQuote, 'i').test(content);
@@ -184,6 +189,195 @@ function scanSqlSchema(content: string, relativeFile: string): VelloxFinding[] {
     }
   }
   return results;
+}
+
+function lineNumberAt(content: string, index: number): number {
+  return content.slice(0, index).split('\n').length;
+}
+
+function floatingImageReference(image: string): boolean {
+  if (!image || image === 'scratch' || image.includes('@sha256:') || /[$<>{}]/.test(image)) return false;
+  const finalSegment = image.split('/').pop() || image;
+  return !finalSegment.includes(':') || finalSegment.endsWith(':latest');
+}
+
+function scanDockerfile(content: string, relativeFile: string): VelloxFinding[] {
+  const results: VelloxFinding[] = [];
+  const fromLines = [...content.matchAll(/^\s*FROM(?:\s+--platform=\S+)?\s+(\S+)/gim)];
+  for (const match of fromLines) {
+    const image = match[1]!;
+    if (!floatingImageReference(image)) continue;
+    results.push(finding({
+      ruleId: 'infra/container-floating-base-image', severity: 'MEDIUM', category: 'infrastructure',
+      title: 'Container base image is not pinned',
+      evidence: `Base image ${image} can change without a source change.`,
+      recommendation: 'Pin an immutable digest or an explicit versioned image tag and update it deliberately.',
+      file: relativeFile, line: lineNumberAt(content, match.index)
+    }));
+  }
+  if (fromLines.some(match => match[1] !== 'scratch') && !/^\s*USER\s+\S+/mi.test(content)) {
+    results.push(finding({
+      ruleId: 'infra/container-root-user', severity: 'MEDIUM', category: 'infrastructure',
+      title: 'Container has no explicit non-root user',
+      evidence: 'No USER instruction was found in the Dockerfile.',
+      recommendation: 'Create and select a least-privileged runtime user in the final stage.',
+      file: relativeFile, line: fromLines.length ? lineNumberAt(content, fromLines.at(-1)!.index) : 1
+    }));
+  }
+  return results;
+}
+
+function yamlDocuments(content: string): Array<{ content: string; startLine: number }> {
+  const documents: Array<{ content: string; startLine: number }> = [];
+  const lines = content.split('\n');
+  let start = 0;
+  for (let index = 0; index <= lines.length; index += 1) {
+    if (index < lines.length && !/^\s*---\s*$/.test(lines[index]!)) continue;
+    const document = lines.slice(start, index).join('\n');
+    if (document.trim()) documents.push({ content: document, startLine: start + 1 });
+    start = index + 1;
+  }
+  return documents;
+}
+
+function yamlContainerBlocks(content: string): Array<{ content: string; startLine: number; name: string }> {
+  const results: Array<{ content: string; startLine: number; name: string }> = [];
+  const lines = content.split('\n');
+  for (let index = 0; index < lines.length; index += 1) {
+    const section = /^(\s*)(?:initContainers|containers):\s*$/.exec(lines[index]!);
+    if (!section) continue;
+    const sectionIndent = indentationOf(section[1]!);
+    let itemStart = -1;
+    let itemIndent = -1;
+    const flush = (end: number): void => {
+      if (itemStart < 0) return;
+      const block = lines.slice(itemStart, end).join('\n');
+      const name = /^\s*-?\s*name:\s*["']?([^\s"'#]+)/mi.exec(block)?.[1] || `container at line ${itemStart + 1}`;
+      results.push({ content: block, startLine: itemStart + 1, name });
+    };
+    let cursor = index + 1;
+    for (; cursor < lines.length; cursor += 1) {
+      const line = lines[cursor]!;
+      if (!line.trim()) continue;
+      const indent = indentationOf(line);
+      if (indent <= sectionIndent) break;
+      const item = /^(\s*)-\s+(?:name|image):/.exec(line);
+      if (!item) continue;
+      const candidateIndent = indentationOf(item[1]!);
+      if (itemStart < 0) {
+        itemStart = cursor;
+        itemIndent = candidateIndent;
+      } else if (candidateIndent === itemIndent) {
+        flush(cursor);
+        itemStart = cursor;
+      }
+    }
+    flush(cursor);
+    index = Math.max(index, cursor - 1);
+  }
+  return results;
+}
+
+function scanYamlInfrastructure(content: string, relativeFile: string): VelloxFinding[] {
+  const results: VelloxFinding[] = [];
+  const compose = /(?:^|\/)(?:docker-)?compose(?:\.[^/]+)?\.ya?ml$/i.test(relativeFile);
+  for (const document of yamlDocuments(content)) {
+    const kind = /^\s*kind:\s*["']?([\w-]+)/mi.exec(document.content)?.[1];
+    const kubernetes = Boolean(/^\s*apiVersion:\s*\S+/mi.test(document.content) && kind);
+    if (kubernetes && /^(?:CronJob|DaemonSet|Deployment|Job|Pod|StatefulSet)$/i.test(kind!)) {
+      for (const container of yamlContainerBlocks(document.content)) {
+        const resourceLine = /^\s*resources:\s*$/mi.exec(container.content);
+        if (!resourceLine) {
+          results.push(finding({
+            ruleId: 'infra/kubernetes-missing-resources', severity: 'MEDIUM', category: 'infrastructure',
+            title: 'Kubernetes container has no resource policy',
+            evidence: `${kind} container ${container.name} has no CPU or memory requests and limits.`,
+            recommendation: 'Set measured CPU/memory requests and protective limits for every production container.',
+            file: relativeFile, line: document.startLine + container.startLine - 1
+          }));
+          continue;
+        }
+        if (!/^\s*requests:\s*$/mi.test(container.content) || !/^\s*limits:\s*$/mi.test(container.content)) {
+          results.push(finding({
+            ruleId: 'infra/kubernetes-partial-resources', severity: 'MEDIUM', category: 'infrastructure',
+            title: 'Kubernetes container resource policy is incomplete',
+            evidence: `${kind} container ${container.name} does not declare both requests and limits.`,
+            recommendation: 'Define measured CPU/memory requests and limits; validate them against runtime telemetry.',
+            file: relativeFile, line: document.startLine + container.startLine + lineNumberAt(container.content, resourceLine.index) - 2
+          }));
+        }
+      }
+    }
+
+    if (kubernetes || compose) {
+      for (const imageMatch of document.content.matchAll(/^\s*image:\s*["']?([^\s"'#]+)/gim)) {
+        if (!floatingImageReference(imageMatch[1]!)) continue;
+        results.push(finding({
+          ruleId: 'infra/container-floating-image', severity: 'MEDIUM', category: 'infrastructure',
+          title: 'Container image is not pinned',
+          evidence: `Image ${imageMatch[1]} can change without a manifest change.`,
+          recommendation: 'Pin an immutable digest or explicit version tag.',
+          file: relativeFile, line: document.startLine + lineNumberAt(document.content, imageMatch.index) - 1
+        }));
+      }
+      for (const privileged of document.content.matchAll(/^\s*(?:privileged|hostNetwork|hostPID):\s*true\s*(?:#.*)?$/gim)) {
+        results.push(finding({
+          ruleId: 'infra/privileged-workload', severity: 'HIGH', category: 'infrastructure',
+          title: 'Workload enables privileged host access',
+          evidence: privileged[0]!.trim(),
+          recommendation: 'Remove privileged or host-level access unless a reviewed workload requirement proves it necessary.',
+          file: relativeFile, line: document.startLine + lineNumberAt(document.content, privileged.index) - 1
+        }));
+      }
+    }
+  }
+  return results;
+}
+
+function scanTerraform(content: string, relativeFile: string): VelloxFinding[] {
+  const results: VelloxFinding[] = [];
+  for (const database of content.matchAll(/resource\s+["']aws_db_instance["']\s+["'][^"']+["']\s*\{([\s\S]*?)\n\}/g)) {
+    const publicAccess = /\bpublicly_accessible\s*=\s*true\b/i.exec(database[1]!);
+    if (!publicAccess) continue;
+    const absoluteIndex = database.index + database[0]!.indexOf(publicAccess[0]!);
+    results.push(finding({
+      ruleId: 'infra/terraform-public-database', severity: 'HIGH', category: 'infrastructure',
+      title: 'Terraform exposes a managed database publicly',
+      evidence: 'aws_db_instance sets publicly_accessible = true.',
+      recommendation: 'Place the database on private subnets and require access through controlled application or administrative paths.',
+      file: relativeFile, line: lineNumberAt(content, absoluteIndex)
+    }));
+  }
+  for (const ingress of content.matchAll(/\bingress\s*\{([\s\S]*?)\n\s*\}/g)) {
+    const publicCidr = /["']0\.0\.0\.0\/0["']|["']::\/0["']/i.exec(ingress[1]!);
+    if (!publicCidr) continue;
+    const absoluteIndex = ingress.index + ingress[0]!.indexOf(publicCidr[0]!);
+    results.push(finding({
+      ruleId: 'infra/terraform-public-ingress', severity: 'MEDIUM', category: 'infrastructure',
+      title: 'Terraform ingress is open to the internet',
+      evidence: 'An ingress block allows a world-routable CIDR.',
+      recommendation: 'Restrict ingress to required ports and trusted CIDRs; document any intentionally public endpoint.',
+      file: relativeFile, line: lineNumberAt(content, absoluteIndex)
+    }));
+  }
+  for (const publicAcl of content.matchAll(/\bacl\s*=\s*["']public-(?:read|read-write)["']/gi)) {
+    results.push(finding({
+      ruleId: 'infra/terraform-public-storage', severity: 'HIGH', category: 'infrastructure',
+      title: 'Terraform configures public object storage',
+      evidence: publicAcl[0]!,
+      recommendation: 'Use private storage plus explicit CDN or signed-object access where public delivery is required.',
+      file: relativeFile, line: lineNumberAt(content, publicAcl.index)
+    }));
+  }
+  return results;
+}
+
+function scanInfrastructure(content: string, relativeFile: string): VelloxFinding[] {
+  const base = path.basename(relativeFile);
+  if (/^(?:Dockerfile|Containerfile)(?:\..+)?$/i.test(base)) return scanDockerfile(content, relativeFile);
+  if (/\.ya?ml$/i.test(relativeFile)) return scanYamlInfrastructure(content, relativeFile);
+  if (/\.tf(?:vars)?$/i.test(relativeFile)) return scanTerraform(content, relativeFile);
+  return [];
 }
 
 const SECRET_RULES: Array<{
@@ -280,11 +474,37 @@ function isPlaceholderDatabaseUri(user: string, password: string, host: string):
   return localHost && (genericUser || genericPassword);
 }
 
+interface ActiveLoop {
+  start: number;
+  depth: number;
+  indent: number;
+  language: 'brace' | 'python';
+  legitimate: boolean;
+  reported: boolean;
+  kind: string;
+}
+
+function indentationOf(line: string): number {
+  return (line.match(/^\s*/)?.[0] || '').replace(/\t/g, '    ').length;
+}
+
+function hasAsyncWork(code: string): boolean {
+  return /\bawait\s+(?:axios\.|fetch\s*\(|(?:client|connection|cursor|db|pool|prisma|session)\.|query\s*\(|\w+(?:Repository|Service)\.)/i.test(code);
+}
+
+function hasSynchronousPythonQuery(code: string): boolean {
+  return !/\bawait\b/.test(code) && (
+    /\b(?:connection|cursor|db|session)\.(?:execute|executemany|query|scalar|scalars|get|select)\s*\(/i.test(code)
+    || /\b\w+\.objects\.(?:all|exclude|filter|get|raw|select_related|prefetch_related)\s*\(/i.test(code)
+    || /\b\w+\.query\.(?:all|count|filter|first|get|one|one_or_none)\s*\(/i.test(code)
+  );
+}
+
 function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: boolean): VelloxFinding[] {
   const results: VelloxFinding[] = [];
   const lines = content.split('\n');
   const codeLines = executableLines(content);
-  let loop: { start: number; depth: number; legitimate: boolean; reported: boolean; kind: string } | null = null;
+  let loop: ActiveLoop | null = null;
   let braceDepth = 0;
 
   for (const key of content.matchAll(PRIVATE_KEY)) {
@@ -307,6 +527,9 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
     const ignored = source.includes('@vellox-ignore') || previous.includes('@vellox-ignore') || source.includes('vellox-disable');
     const opens = (code.match(/\{/g) || []).length;
     const closes = (code.match(/\}/g) || []).length;
+    const indent = indentationOf(source);
+
+    if (loop?.language === 'python' && index + 1 > loop.start && code.trim() && indent <= loop.indent) loop = null;
 
     if (inspectCode && !ignored && !loop) {
       const jsLoop = /\b(for\s*(?:await\s*)?\(|for\s+await\s*\(|while\s*\()/.test(code);
@@ -315,16 +538,18 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
         loop = {
           start: index + 1,
           depth: braceDepth,
+          indent,
+          language: pythonLoop ? 'python' : 'brace',
           legitimate: hasIntentionalLoopContext(lines, index),
           reported: false,
-          kind: 'loop'
+          kind: pythonLoop ? 'python-loop' : 'brace-loop'
         };
       }
     }
 
     if (loop && hasIntentionalLoopContext(lines, index)) loop.legitimate = true;
 
-    if (inspectCode && !ignored && loop && !loop.legitimate && !loop.reported && /\bawait\s+(?:axios\.|client\.|db\.|fetch\s*\(|pool\.|prisma\.|query\s*\(|\w+Repository\.|\w+Service\.)/i.test(code)) {
+    if (inspectCode && !ignored && loop && !loop.legitimate && !loop.reported && hasAsyncWork(code)) {
       results.push(finding({
         ruleId: 'code/sequential-async-loop',
         severity: sequentialLoopSeverity(relativeFile),
@@ -332,6 +557,21 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
         title: 'Sequential asynchronous work inside a loop',
         evidence: source.trim(),
         recommendation: 'Batch the operation or use bounded parallelism. Add // @vellox-ignore only after review.',
+        file: relativeFile,
+        line: index + 1,
+        metadata: { loopStart: loop.start, kind: loop.kind }
+      }));
+      loop.reported = true;
+    }
+
+    if (inspectCode && /\.py$/i.test(relativeFile) && !ignored && loop && !loop.legitimate && !loop.reported && hasSynchronousPythonQuery(code)) {
+      results.push(finding({
+        ruleId: 'code/synchronous-query-loop',
+        severity: sequentialLoopSeverity(relativeFile),
+        category: 'code',
+        title: 'Synchronous database work inside a loop',
+        evidence: source.trim(),
+        recommendation: 'Fetch the required records in one query or use a bulk operation outside the loop. Add # @vellox-ignore only after review.',
         file: relativeFile,
         line: index + 1,
         metadata: { loopStart: loop.start, kind: loop.kind }
@@ -387,7 +627,7 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
     }
 
     braceDepth += opens - closes;
-    if (loop && braceDepth <= loop.depth && index + 1 > loop.start) loop = null;
+    if (loop?.language === 'brace' && braceDepth <= loop.depth && index + 1 > loop.start) loop = null;
     if (loop && index + 1 - loop.start > 80) loop = null;
   }
   return results;
@@ -425,17 +665,116 @@ export function analyzeSqlQuery(sql: string, file?: string, line?: number): Vell
 }
 
 function scanRawQueries(content: string, relativeFile: string): VelloxFinding[] {
-  if (/(?:^|\/)(?:__tests__|tests?|fixtures?|examples?)(?:\/|$)|\.(?:test|spec)\.|(?:^|\/)(?:test[^/]*|[^/]*[.-]test)\.(?:[cm]?[jt]s|py)$/i.test(relativeFile)) return [];
+  if (isTestOrFixtureFile(relativeFile)) return [];
   const results: VelloxFinding[] = [];
-  const lines = content.split('\n');
-  for (let index = 0; index < lines.length; index += 1) {
-    const source = lines[index]!;
-    for (const literal of source.matchAll(/(["'`])((?:\\.|(?!\1).)*)\1/g)) {
-      const sql = literal[2]!.replace(/\\(["'`])/g, '$1').trim();
-      if (/^(?:SELECT|WITH)\b[\s\S]*\bFROM\b/i.test(sql)) {
-        results.push(...analyzeSqlQuery(sql, relativeFile, index + 1));
+  const literals = [
+    ...content.matchAll(/`([\s\S]*?)`/g),
+    ...content.matchAll(/(["']{3})([\s\S]*?)\1/g),
+    ...content.matchAll(/(["'])((?:\\.|(?!\1)[^\r\n])*)\1/g)
+  ].sort((left, right) => left.index - right.index);
+  for (const literal of literals) {
+    const raw = literal[2] ?? literal[1] ?? '';
+    const sql = raw.replace(/\\(["'`])/g, '$1').trim();
+    if (/^(?:SELECT|WITH)\b[\s\S]*\bFROM\b/i.test(sql)) {
+      results.push(...analyzeSqlQuery(sql, relativeFile, lineNumberAt(content, literal.index)));
+    }
+  }
+  return results;
+}
+
+function isTestOrFixtureFile(relativeFile: string): boolean {
+  return /(?:^|\/)(?:__tests__|tests?|fixtures?|examples?)(?:\/|$)|\.(?:test|spec)\.|(?:^|\/)(?:test[^/]*|[^/]*[.-]test)\.(?:[cm]?[jt]s|py)$/i.test(relativeFile);
+}
+
+function stripSqlComments(content: string): string {
+  let result = '';
+  let quote = '';
+  let lineComment = false;
+  let blockComment = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index]!;
+    const next = content[index + 1];
+    if (lineComment) {
+      if (character === '\n') {
+        lineComment = false;
+        result += '\n';
+      } else result += ' ';
+      continue;
+    }
+    if (blockComment) {
+      if (character === '*' && next === '/') {
+        result += '  ';
+        blockComment = false;
+        index += 1;
+      } else result += character === '\n' ? '\n' : ' ';
+      continue;
+    }
+    if (quote) {
+      result += character;
+      if (character === quote && next === quote) {
+        result += next;
+        index += 1;
+      } else if (character === quote && content[index - 1] !== '\\') quote = '';
+      continue;
+    }
+    if (character === '-' && next === '-') {
+      result += '  ';
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === '/' && next === '*') {
+      result += '  ';
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') quote = character;
+    result += character;
+  }
+  return result;
+}
+
+function scanSqlFileQueries(content: string, relativeFile: string): VelloxFinding[] {
+  const source = stripSqlComments(content);
+  const results: VelloxFinding[] = [];
+  let statementStart = 0;
+  let quote = '';
+  let dollarQuote = '';
+  for (let index = 0; index <= source.length; index += 1) {
+    const character = source[index] || ';';
+    if (dollarQuote) {
+      if (source.startsWith(dollarQuote, index)) {
+        index += dollarQuote.length - 1;
+        dollarQuote = '';
+      }
+      continue;
+    }
+    if (quote) {
+      if (character === quote && source[index + 1] === quote) index += 1;
+      else if (character === quote && source[index - 1] !== '\\') quote = '';
+      continue;
+    }
+    if (character === '$') {
+      const tag = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.exec(source.slice(index))?.[0];
+      if (tag) {
+        dollarQuote = tag;
+        index += tag.length - 1;
+        continue;
       }
     }
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+    if (character !== ';') continue;
+    const statement = source.slice(statementStart, index).trim();
+    const leadingWhitespace = source.slice(statementStart, index).search(/\S/);
+    const absoluteStart = statementStart + Math.max(0, leadingWhitespace);
+    if (/^(?:SELECT|WITH)\b[\s\S]*\bFROM\b/i.test(statement)) {
+      results.push(...analyzeSqlQuery(statement, relativeFile, lineNumberAt(source, absoluteStart)));
+    }
+    statementStart = index + 1;
   }
   return results;
 }
@@ -460,9 +799,14 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
     const relative = path.relative(target, file).replace(/\\/g, '/');
     if (file.endsWith('.prisma')) findings.push(...scanPrisma(content, relative));
     if (/\.(?:js|jsx|ts|tsx)$/i.test(file) && /(?:pgTable|mysqlTable|sqliteTable)\s*\(/.test(content)) findings.push(...scanDrizzle(content, relative));
-    if (file.endsWith('.sql')) findings.push(...scanSqlSchema(content, relative));
-    findings.push(...scanCodeAndSecrets(content, relative, /\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file)));
-    if (databaseContext.detected && /\.(?:cjs|js|jsx|mjs|py|sql|ts|tsx)$/i.test(file)) findings.push(...scanRawQueries(content, relative));
+    if (file.endsWith('.sql')) {
+      findings.push(...scanSqlSchema(content, relative));
+      findings.push(...scanSqlFileQueries(content, relative));
+    }
+    findings.push(...scanInfrastructure(content, relative));
+    const inspectCode = /\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file) && !isTestOrFixtureFile(relative);
+    findings.push(...scanCodeAndSecrets(content, relative, inspectCode));
+    if (databaseContext.detected && /\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file)) findings.push(...scanRawQueries(content, relative));
   }
 
   const unique = [...new Map(findings.map(item => [item.fingerprint, item])).values()];
@@ -484,6 +828,7 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
       medium: unique.filter(item => item.severity === 'MEDIUM').length,
       low: unique.filter(item => item.severity === 'LOW').length,
       secrets: unique.filter(item => item.category === 'security').length,
+      infrastructure: unique.filter(item => item.category === 'infrastructure').length,
       reviewableSqlFixes: unique.filter(item => item.sql).length
     },
     findings: unique

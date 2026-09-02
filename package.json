@@ -1,6 +1,6 @@
 {
   "name": "vellox-workspace",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Vellox - local evidence-first scanner for code, SQL, ORM schemas, and CI",
   "packageManager": "pnpm@11.25.0",

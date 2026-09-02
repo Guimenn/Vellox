@@ -123,6 +123,7 @@ function inlineReport(sql: string): VelloxReport {
       medium: findings.filter(item => item.severity === 'MEDIUM').length,
       low: findings.filter(item => item.severity === 'LOW').length,
       secrets: 0,
+      infrastructure: 0,
       reviewableSqlFixes: 0
     },
     findings
