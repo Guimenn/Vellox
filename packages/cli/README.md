@@ -11,7 +11,7 @@ Find supported risks, inspect the evidence, and review the action.
 
 [![npm](https://img.shields.io/npm/v/vellox?style=flat-square&label=npx%20vellox&labelColor=070908&color=c8ff53)](https://www.npmjs.com/package/vellox)
 [![CI](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml/badge.svg)](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml)
-[![tests](https://img.shields.io/badge/tests-78%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
+[![tests](https://img.shields.io/badge/tests-85%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-070908?style=flat-square&labelColor=070908&color=c8ff53)](./package.json)
 [![license](https://img.shields.io/badge/license-proprietary-070908?style=flat-square&labelColor=070908&color=c8ff53)](./LICENSE)
 
@@ -126,7 +126,7 @@ npx vellox explain plan.json
 
 ## Proof, not promises
 
-The repository currently passes **78 automated tests** (75 TypeScript + 3 Python), including CLI contract tests that prove scan → report → fix → gate behavior from actual fixture files.
+The repository currently passes **85 automated tests** (82 TypeScript + 3 Python), including CLI contract tests that prove the documented scan, report, fix, baseline, gate, SARIF, EXPLAIN, DDL, hook, and CI workflows from actual fixture files.
 
 Reproduce the checks on your machine:
 

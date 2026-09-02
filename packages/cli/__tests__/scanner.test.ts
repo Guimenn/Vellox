@@ -117,6 +117,82 @@ describe('Vellox project scanner contract', () => {
     expect(sql).not.toContain('IF NOT EXISTS');
   });
 
+  it('reads the Prisma datasource provider instead of the generator provider', () => {
+    const directory = fixture();
+    const schemaPath = path.join(directory, 'prisma', 'schema.prisma');
+    fs.writeFileSync(schemaPath, `generator client {
+  provider = "prisma-client-js"
+}
+${fs.readFileSync(schemaPath, 'utf8')}`);
+
+    const report = scanProject(directory, 'test');
+    const sql = report.findings.find(item => item.ruleId === 'prisma/missing-relation-index')?.sql;
+
+    expect(sql).toContain('CREATE INDEX CONCURRENTLY IF NOT EXISTS');
+  });
+
+  it('ignores compiled Python files and cache directories', () => {
+    const directory = fixture();
+    const fakeKey = ['sk-proj-', 'abcdefghijklmnopqrstuvwx123456'].join('');
+    fs.writeFileSync(path.join(directory, 'src', 'module.pyc'), fakeKey);
+    fs.mkdirSync(path.join(directory, '__pycache__'), { recursive: true });
+    fs.writeFileSync(path.join(directory, '__pycache__', 'module.py'), fakeKey);
+
+    const report = scanProject(directory, 'test');
+
+    expect(report.findings.some(item => item.file?.includes('module.pyc'))).toBe(false);
+    expect(report.findings.some(item => item.file?.includes('__pycache__'))).toBe(false);
+  });
+
+  it('does not flag retries, cursor pagination, or explicitly serialized loops', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'intentional.ts'), `export async function retry() {
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    await fetch('/health');
+  }
+  let hasMore = true;
+  while (hasMore) {
+    const response = await client.list({ cursor });
+    hasMore = response.hasMore;
+  }
+  // One at a time because the upstream API returns 502 under parallel load.
+  for (const item of items) {
+    await client.send(item);
+  }
+}`);
+
+    const report = scanProject(directory, 'test');
+
+    expect(report.findings.some(item => item.file === 'src/intentional.ts' && item.ruleId === 'code/sequential-async-loop')).toBe(false);
+  });
+
+  it('requires an embedded payload before reporting a private key', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'pem.ts'), "return `-----BEGIN PRIVATE KEY-----\\n${wrapped}\\n-----END PRIVATE KEY-----`;\n");
+    fs.writeFileSync(path.join(directory, 'actual.pem.env'), `KEY=-----BEGIN PRIVATE KEY-----
+${'A'.repeat(80)}
+-----END PRIVATE KEY-----`);
+
+    const report = scanProject(directory, 'test');
+    const keys = report.findings.filter(item => item.ruleId === 'secret/private-key');
+
+    expect(keys).toHaveLength(1);
+    expect(keys[0]?.file).toBe('actual.pem.env');
+  });
+
+  it('ignores local placeholder database URIs but reports non-placeholder credentials', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, '.env.example'), 'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/app\n');
+    const productionUri = ['DATABASE_URL=postgresql://service:', 'real-credential', '@db.example.net:5432/app\n'].join('');
+    fs.writeFileSync(path.join(directory, '.env.production'), productionUri);
+
+    const report = scanProject(directory, 'test');
+    const uris = report.findings.filter(item => item.ruleId === 'secret/database-uri');
+
+    expect(uris).toHaveLength(1);
+    expect(uris[0]?.file).toBe('.env.production');
+  });
+
   it('does not mislabel bounded Promise.all work as sequential execution', () => {
     const directory = fixture();
     fs.writeFileSync(path.join(directory, 'src', 'parallel.ts'), `export async function load(ids) {
@@ -130,5 +206,19 @@ describe('Vellox project scanner contract', () => {
     const parallelFinding = report.findings.find(item => item.file === 'src/parallel.ts' && item.ruleId === 'code/sequential-async-loop');
 
     expect(parallelFinding).toBeUndefined();
+  });
+
+  it('reports one finding per sequential loop and lowers maintenance scripts to medium', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'verificar-dados.ts'), `for (const item of items) {
+  await prisma.item.findUnique({ where: { id: item.id } });
+  await prisma.audit.create({ data: { itemId: item.id } });
+}`);
+
+    const report = scanProject(directory, 'test');
+    const findings = report.findings.filter(item => item.file === 'verificar-dados.ts' && item.ruleId === 'code/sequential-async-loop');
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.severity).toBe('MEDIUM');
   });
 });

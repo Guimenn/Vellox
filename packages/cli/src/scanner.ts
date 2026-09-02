@@ -5,9 +5,10 @@ import { Severity, VelloxFinding, VelloxReport } from './types.js';
 
 const IGNORED_DIRECTORIES = new Set([
   '.git', '.next', '.nuxt', '.output', '.turbo', '.vellox',
+  '.pytest_cache', '.ruff_cache', '.test-build', '.teste-build', '__pycache__',
   'build', 'coverage', 'dist', 'node_modules', 'vendor'
 ]);
-const SOURCE_FILE = /(?:\.(?:cjs|env|js|json|jsx|mjs|prisma|py|sql|toml|ts|tsx|yaml|yml)|^\.env(?:\..+)?$|^Pipfile$|^requirements(?:\.[\w-]+)?\.txt$)/i;
+const SOURCE_FILE = /(?:\.(?:cjs|env|js|json|jsx|mjs|prisma|py|sql|toml|ts|tsx|yaml|yml)$|^\.env(?:\..+)?$|^Pipfile$|^requirements(?:\.[\w-]+)?\.txt$)/i;
 
 interface FindingInput extends Omit<VelloxFinding, 'fingerprint'> {}
 
@@ -25,7 +26,8 @@ function quoteIdentifier(identifier: string, dialect: string): string {
   return `"${identifier.replace(/"/g, '""')}"`;
 }
 
-function indexSql(table: string, column: string, dialect: string): string {
+function indexSql(table: string, column: string, dialect: string): string | undefined {
+  if (!['mariadb', 'mysql', 'postgresql', 'sqlite'].includes(dialect)) return undefined;
   const safeName = `idx_${table}_${column}`.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
   const concurrently = dialect === 'postgresql' ? ' CONCURRENTLY' : '';
   const ifNotExists = ['postgresql', 'sqlite', 'mariadb'].includes(dialect) ? ' IF NOT EXISTS' : '';
@@ -90,7 +92,8 @@ export function detectDatabaseContext(root: string, files: string[]): { detected
 
 function scanPrisma(content: string, relativeFile: string): VelloxFinding[] {
   const results: VelloxFinding[] = [];
-  const provider = /provider\s*=\s*["']([^"']+)["']/.exec(content)?.[1]?.toLowerCase() || 'unknown';
+  const datasource = /datasource\s+\w+\s*\{([\s\S]*?)\}/.exec(content)?.[1] || '';
+  const provider = /provider\s*=\s*["']([^"']+)["']/.exec(datasource)?.[1]?.toLowerCase() || 'unknown';
   const modelRegex = /model\s+(\w+)\s*\{([\s\S]*?)\n\}/g;
   for (const model of content.matchAll(modelRegex)) {
     const modelName = model[1]!;
@@ -107,7 +110,7 @@ function scanPrisma(content: string, relativeFile: string): VelloxFinding[] {
       const evidence = `Model ${modelName} relation field ${field} has no @@index/@@unique coverage.`;
       results.push(finding({
         ruleId: 'prisma/missing-relation-index',
-        severity: 'HIGH',
+        severity: 'MEDIUM',
         category: 'database',
         title: 'Missing Prisma relation index',
         evidence,
@@ -137,7 +140,7 @@ function scanDrizzle(content: string, relativeFile: string): VelloxFinding[] {
       const dialect = kind === 'pgTable' ? 'postgresql' : kind === 'mysqlTable' ? 'mysql' : 'sqlite';
       results.push(finding({
         ruleId: 'drizzle/missing-relation-index',
-        severity: 'HIGH',
+        severity: 'MEDIUM',
         category: 'database',
         title: 'Missing Drizzle relation index',
         evidence: `Table ${tableName} references another table through ${column} without a declared index.`,
@@ -163,12 +166,12 @@ function scanSqlSchema(content: string, relativeFile: string): VelloxFinding[] {
     for (const foreignKey of body.matchAll(/FOREIGN\s+KEY\s*\(\s*["`]?([\w]+)["`]?\s*\)\s*REFERENCES\s+["`]?[\w.]+["`]?/gi)) {
       const column = foreignKey[1]!;
       const optionalQuote = '["`]?' ;
-      const indexed = new RegExp('(?:INDEX|KEY|UNIQUE)[^;\\n]*\\(\\s*' + optionalQuote + column + optionalQuote, 'i').test(body)
+      const indexed = new RegExp('(?<!FOREIGN\\s)(?:INDEX|KEY|UNIQUE)[^;\\n]*\\(\\s*' + optionalQuote + column + optionalQuote, 'i').test(body)
         || new RegExp('CREATE\\s+(?:UNIQUE\\s+)?INDEX[\\s\\S]*?ON\\s+' + optionalQuote + tableName + optionalQuote + '[\\s\\S]*?\\(\\s*' + optionalQuote + column + optionalQuote, 'i').test(content);
       if (indexed) continue;
       results.push(finding({
         ruleId: 'sql/missing-foreign-key-index',
-        severity: 'HIGH',
+        severity: 'MEDIUM',
         category: 'database',
         title: 'Foreign key without a supporting index',
         evidence: `${tableName}.${column} is declared as a foreign key without an index in the inspected schema.`,
@@ -194,9 +197,10 @@ const SECRET_RULES: Array<{
   { id: 'secret/anthropic-api-key', title: 'Anthropic API key exposed', regex: /\bsk-ant-[a-zA-Z0-9_-]{20,}\b/, recommendation: 'Revoke the key and move it to ANTHROPIC_API_KEY outside source control.' },
   { id: 'secret/aws-access-key', title: 'AWS access key exposed', regex: /\bAKIA[0-9A-Z]{16}\b/, recommendation: 'Revoke the key and use an IAM role or managed secret.' },
   { id: 'secret/stripe-live-key', title: 'Stripe live key exposed', regex: /\b(?:sk|rk)_live_[0-9a-zA-Z]{24,}\b/, recommendation: 'Revoke the live key immediately and load it from a managed secret.' },
-  { id: 'secret/github-token', title: 'GitHub token exposed', regex: /\b(?:ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{22,})\b/, recommendation: 'Revoke the token and use GitHub Actions secrets or an environment variable.' },
-  { id: 'secret/private-key', title: 'Private key committed', regex: /-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/, recommendation: 'Remove and rotate the key, then store it in a secrets manager.' }
+  { id: 'secret/github-token', title: 'GitHub token exposed', regex: /\b(?:ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{22,})\b/, recommendation: 'Revoke the token and use GitHub Actions secrets or an environment variable.' }
 ];
+
+const PRIVATE_KEY = /-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----\s*([A-Za-z0-9+/=\r\n]{64,})\s*-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/g;
 
 function redact(value: string): string {
   if (value.startsWith('-----BEGIN')) return '-----BEGIN … PRIVATE KEY-----';
@@ -257,12 +261,44 @@ function executableLines(source: string): string[] {
   return result.split('\n');
 }
 
+function hasIntentionalLoopContext(lines: string[], index: number): boolean {
+  const context = lines.slice(Math.max(0, index - 5), index + 1).join('\n');
+  return /\b(?:attempts?|retries|retry|tentativas?|batch(?:es)?|chunks?|lotes?|cursor|offset|hasMore|nextPage|pageSize|pageNumber|currentPage|pagina(?:s|ção)?|página(?:s|ção)?)\b/i.test(context)
+    || /(?:one at a time|one-by-one|uma (?:de cada|por) vez|sequential(?:ly)?|serial(?:ly)?|rate.?limit|\b429\b|\b502\b)/i.test(context);
+}
+
+function sequentialLoopSeverity(relativeFile: string): Severity {
+  return /(?:^|\/)(?:migrations?|scripts?|seeds?)(?:\/|$)|(?:^|\/)(?:backfill|check|debug|fix|migrate|repair|restore|seed)[^/]*\.(?:[cm]?[jt]s|py)$|^(?:analis(?:e|ar)|buscar|corrigir|gerar|habilitar|ultimos?|verificar)[^/]*\.(?:[cm]?[jt]s|py)$/i.test(relativeFile)
+    ? 'MEDIUM'
+    : 'HIGH';
+}
+
+function isPlaceholderDatabaseUri(user: string, password: string, host: string): boolean {
+  const localHost = /^(?:localhost|127\.0\.0\.1|::1)(?::\d+)?$/i.test(host);
+  const genericUser = /^(?:admin|dev|mysql|postgres|root|test|user|username)$/i.test(user);
+  const genericPassword = /^(?:admin|changeme|change[_-]?me|dev|development|example\d*|local|mysql|password\d*|postgres|root|secret\d*|test(?:ing)?|user|username)$/i.test(password);
+  return localHost && (genericUser || genericPassword);
+}
+
 function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: boolean): VelloxFinding[] {
   const results: VelloxFinding[] = [];
   const lines = content.split('\n');
   const codeLines = executableLines(content);
-  let loop: { start: number; depth: number; legitimate: boolean; kind: string } | null = null;
+  let loop: { start: number; depth: number; legitimate: boolean; reported: boolean; kind: string } | null = null;
   let braceDepth = 0;
+
+  for (const key of content.matchAll(PRIVATE_KEY)) {
+    results.push(finding({
+      ruleId: 'secret/private-key',
+      severity: 'CRITICAL',
+      category: 'security',
+      title: 'Private key committed',
+      evidence: 'Detected a complete private key block with an embedded payload.',
+      recommendation: 'Remove and rotate the key, then store it in a secrets manager.',
+      file: relativeFile,
+      line: content.slice(0, key.index).split('\n').length
+    }));
+  }
 
   for (let index = 0; index < lines.length; index += 1) {
     const source = lines[index]!;
@@ -279,16 +315,19 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
         loop = {
           start: index + 1,
           depth: braceDepth,
-          legitimate: /\b(?:attempt|batch|chunk|page|retries|retry)\b/i.test(code),
+          legitimate: hasIntentionalLoopContext(lines, index),
+          reported: false,
           kind: 'loop'
         };
       }
     }
 
-    if (inspectCode && !ignored && loop && !loop.legitimate && /\bawait\s+(?:axios\.|client\.|db\.|fetch\s*\(|pool\.|prisma\.|query\s*\(|\w+Repository\.|\w+Service\.)/i.test(code)) {
+    if (loop && hasIntentionalLoopContext(lines, index)) loop.legitimate = true;
+
+    if (inspectCode && !ignored && loop && !loop.legitimate && !loop.reported && /\bawait\s+(?:axios\.|client\.|db\.|fetch\s*\(|pool\.|prisma\.|query\s*\(|\w+Repository\.|\w+Service\.)/i.test(code)) {
       results.push(finding({
         ruleId: 'code/sequential-async-loop',
-        severity: 'HIGH',
+        severity: sequentialLoopSeverity(relativeFile),
         category: 'code',
         title: 'Sequential asynchronous work inside a loop',
         evidence: source.trim(),
@@ -297,6 +336,7 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
         line: index + 1,
         metadata: { loopStart: loop.start, kind: loop.kind }
       }));
+      loop.reported = true;
     }
 
     if (inspectCode && !ignored && /^(?:const|let|var)\s+(\w*(?:Cache|Store|List))\s*=\s*(?:\{\}|\[\]|new\s+Map\(\));?\s*$/i.test(code.trim())) {
@@ -312,24 +352,27 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
       }));
     }
 
-    if (!ignored && !/(?:placeholder|your-key|example)/i.test(source)) {
-      for (const rule of SECRET_RULES) {
-        const match = rule.regex.exec(source);
-        if (!match) continue;
-        results.push(finding({
-          ruleId: rule.id,
-          severity: 'CRITICAL',
-          category: 'security',
-          title: rule.title,
-          evidence: `Detected credential ${redact(match[0])}.`,
-          recommendation: rule.recommendation,
-          file: relativeFile,
-          line: index + 1
-        }));
+    if (!ignored) {
+      const documentedPlaceholder = /(?:placeholder|your-key|\b(?:example|exemplo)\s*:)/i.test(source);
+      if (!documentedPlaceholder) {
+        for (const rule of SECRET_RULES) {
+          const match = rule.regex.exec(source);
+          if (!match) continue;
+          results.push(finding({
+            ruleId: rule.id,
+            severity: 'CRITICAL',
+            category: 'security',
+            title: rule.title,
+            evidence: `Detected credential ${redact(match[0])}.`,
+            recommendation: rule.recommendation,
+            file: relativeFile,
+            line: index + 1
+          }));
+        }
       }
 
-      const uri = /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/([^:\s"']+):([^@\s"']+)@[^\s"']+/.exec(source);
-      if (uri && !/^(?:password|secret)$/i.test(uri[2]!)) {
+      const uri = /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/([^:\s"']+):([^@\s"']+)@([^/\s"']+)/.exec(source);
+      if (uri && !documentedPlaceholder && !isPlaceholderDatabaseUri(uri[1]!, uri[2]!, uri[3]!)) {
         results.push(finding({
           ruleId: 'secret/database-uri',
           severity: 'CRITICAL',
@@ -382,7 +425,7 @@ export function analyzeSqlQuery(sql: string, file?: string, line?: number): Vell
 }
 
 function scanRawQueries(content: string, relativeFile: string): VelloxFinding[] {
-  if (/(?:^|\/)(?:__tests__|tests?|fixtures?|examples?)(?:\/|$)|\.(?:test|spec)\./i.test(relativeFile)) return [];
+  if (/(?:^|\/)(?:__tests__|tests?|fixtures?|examples?)(?:\/|$)|\.(?:test|spec)\.|(?:^|\/)(?:test[^/]*|[^/]*[.-]test)\.(?:[cm]?[jt]s|py)$/i.test(relativeFile)) return [];
   const results: VelloxFinding[] = [];
   const lines = content.split('\n');
   for (let index = 0; index < lines.length; index += 1) {
