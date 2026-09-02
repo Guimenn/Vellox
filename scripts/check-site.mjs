@@ -25,6 +25,7 @@ try {
   const base = 'http://127.0.0.1:' + address.port;
   const rootResponse = await fetch(base + '/');
   if (!rootResponse.ok || !(await rootResponse.text()).includes('<title>Vellox')) throw new Error('Landing root smoke test failed.');
+  // @vellox-ignore — bounded by local asset references parsed from the checked-in landing page.
   await Promise.all([...new Set(localAssets)].map(async asset => {
     const response = await fetch(base + '/' + asset);
     if (!response.ok) throw new Error('Asset smoke test failed: ' + asset);

@@ -1,8 +1,8 @@
 {
   "name": "vellox-workspace",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
-  "description": "Vellox - local evidence-first scanner for code, SQL, ORM schemas, and CI",
+  "description": "Vellox - local structural analyzer for JavaScript, TypeScript, Python, and SQL performance risks",
   "packageManager": "pnpm@11.25.0",
   "scripts": {
     "build": "pnpm --filter \"./packages/*\" run build && pnpm --filter \"./apps/*\" --filter \"./examples/*\" --filter \"./benchmarks/*\" run build",

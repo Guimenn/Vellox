@@ -1,6 +1,6 @@
 {
   "name": "@vellox/db-core",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Universal database adapter interface, SQL and MongoDB fingerprinters for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

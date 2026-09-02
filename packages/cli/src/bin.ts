@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { DEFAULT_CONFIG, loadConfig, readReport, resolveFromTarget, writeJson } from './config.js';
 import { buildMigration, evaluateBudgets, formatMarkdown, formatPretty, formatTop, toSarif } from './formatters.js';
-import { analyzeSqlQuery, scanProject } from './scanner.js';
+import { analyzeSqlDocument, analyzeSqlQuery, scanProject } from './scanner.js';
 import { VelloxBudgets, VelloxReport } from './types.js';
 
 const args = process.argv.slice(2);
@@ -107,14 +107,14 @@ function projectScan(target: string): void {
   } else throw new Error('Unsupported format "' + format + '". Use pretty, json, or sarif.');
 }
 
-function inlineReport(sql: string): VelloxReport {
-  const findings = analyzeSqlQuery(sql);
+function inlineReport(sql: string, file?: string): VelloxReport {
+  const findings = file ? analyzeSqlDocument(sql, file) : analyzeSqlQuery(sql);
   return {
     schemaVersion: '1.0',
     tool: { name: 'vellox', version: VERSION },
     generatedAt: new Date().toISOString(),
-    target: 'inline SQL',
-    databaseContext: { detected: true, evidence: ['Inline SQL input'] },
+    target: file || 'inline SQL',
+    databaseContext: { detected: true, evidence: [file ? `SQL file: ${file}` : 'Inline SQL input'] },
     summary: {
       filesScanned: 0,
       findings: findings.length,
@@ -130,8 +130,8 @@ function inlineReport(sql: string): VelloxReport {
   };
 }
 
-function singleQuery(sql: string): void {
-  const report = inlineReport(sql);
+function singleQuery(sql: string, file?: string): void {
+  const report = inlineReport(sql, file);
   const format = option('--format') || 'pretty';
   if (format === 'json') writeOutput(JSON.stringify(report, null, 2));
   else if (format === 'sarif') writeOutput(JSON.stringify(toSarif(report), null, 2));
@@ -139,6 +139,17 @@ function singleQuery(sql: string): void {
     console.log(header());
     console.log(formatPretty(report));
   }
+}
+
+function optimize(input: string): void {
+  if (!input) return projectScan(targetFrom('.'));
+  const candidate = path.resolve(process.cwd(), input);
+  if (fs.existsSync(candidate)) {
+    if (fs.statSync(candidate).isDirectory()) return projectScan(candidate);
+    if (!/\.sql$/i.test(candidate)) throw new Error('vellox optimize accepts SQL text, a .sql file, or a project directory.');
+    return singleQuery(fs.readFileSync(candidate, 'utf8'), path.basename(candidate));
+  }
+  return singleQuery(input);
 }
 
 function fix(target: string): void {
@@ -381,6 +392,7 @@ function help(): void {
     'Usage:',
     '  vellox [path] [--format pretty|json|sarif] [--output file]',
     '  vellox scan [path|"SQL"] [--format pretty|json|sarif]',
+    '  vellox optimize [path|query.sql|"SQL"] [--format pretty|json|sarif]',
     '  vellox check [path] [--baseline file] [--max-critical N] [--max-high N]',
     '  vellox baseline [path] [--output file]',
     '  vellox fix [path] [--report file] [--output migration.sql]',
@@ -398,7 +410,8 @@ function help(): void {
 function main(): void {
   const rawCommand = args[0] || '';
   const command = rawCommand.toLowerCase();
-  if (!command || command === 'optimize' || command === '-s') return projectScan(targetFrom(positionals(Boolean(command))[0]));
+  if (!command || command === '-s') return projectScan(targetFrom(positionals(Boolean(command))[0]));
+  if (command === 'optimize') return optimize(positionals().join(' ').trim());
   if (command === 'scan') {
     const input = positionals().join(' ').trim();
     return /^(?:SELECT|INSERT|UPDATE|DELETE|CREATE|WITH)\b/i.test(input) ? singleQuery(input) : projectScan(targetFrom(input || '.'));

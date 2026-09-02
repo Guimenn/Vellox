@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildMigration, evaluateBudgets, toSarif } from '../src/formatters.js';
-import { scanProject } from '../src/scanner.js';
+import { analyzeSqlQuery, scanProject } from '../src/scanner.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -49,7 +49,7 @@ describe('Vellox project scanner contract', () => {
     const report = scanProject(fixture(), 'test');
 
     expect(report.findings.map(item => item.ruleId)).toEqual(expect.arrayContaining([
-      'code/sequential-async-loop',
+      'code/query-in-loop',
       'prisma/missing-relation-index',
       'query/leading-wildcard',
       'query/select-star',
@@ -86,12 +86,12 @@ describe('Vellox project scanner contract', () => {
   it('keeps baseline fingerprints stable when unrelated lines move a finding', () => {
     const directory = fixture();
     const baseline = scanProject(directory, 'test');
-    const originalLoop = baseline.findings.find(item => item.ruleId === 'code/sequential-async-loop');
+    const originalLoop = baseline.findings.find(item => item.ruleId === 'code/query-in-loop');
     const sourcePath = path.join(directory, 'src', 'orders.ts');
     fs.writeFileSync(sourcePath, `// unrelated header\n\n${fs.readFileSync(sourcePath, 'utf8')}`);
 
     const current = scanProject(directory, 'test');
-    const movedLoop = current.findings.find(item => item.ruleId === 'code/sequential-async-loop');
+    const movedLoop = current.findings.find(item => item.ruleId === 'code/query-in-loop');
     const evaluation = evaluateBudgets(current, {
       maxCritical: 0,
       maxHigh: 0,
@@ -105,7 +105,11 @@ describe('Vellox project scanner contract', () => {
 
     const legacyBaseline = {
       ...baseline,
-      findings: baseline.findings.map((item, index) => ({ ...item, fingerprint: `legacy-${index}-${item.line}` }))
+      findings: baseline.findings.map((item, index) => ({
+        ...item,
+        ruleId: item.ruleId === 'code/query-in-loop' ? 'code/sequential-async-loop' : item.ruleId,
+        fingerprint: `legacy-${index}-${item.line}`
+      }))
     };
     expect(evaluateBudgets(current, {
       maxCritical: 0,
@@ -240,6 +244,112 @@ ${'A'.repeat(80)}
     expect(parallelFinding).toBeUndefined();
   });
 
+  it('detects discarded promises, unbounded fan-out, and event-loop blocking in JavaScript', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'async-hotspots.ts'), `import { readFileSync } from 'node:fs';
+export async function processAll(items) {
+  items.forEach(async item => {
+    await save(item);
+  });
+  items.map(async item => save(item));
+  await Promise.all(items.map(async item => save(item)));
+  return readFileSync('/tmp/result.json', 'utf8');
+}
+`);
+
+    const report = scanProject(directory, 'test');
+    const rules = report.findings.filter(item => item.file === 'src/async-hotspots.ts').map(item => item.ruleId);
+
+    expect(rules).toEqual(expect.arrayContaining([
+      'code/async-foreach',
+      'code/dangling-async-map',
+      'code/unbounded-async-fanout',
+      'code/blocking-call-in-async'
+    ]));
+  });
+
+  it('does not warn on paced polling, explicit batches, or concurrency limiters', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'controlled.ts'), `async function poll() {
+  while (running) {
+    await fetchStatus();
+    await delay(1000);
+  }
+  for (const batch of batches) {
+    await Promise.all(batch.map(processItem));
+  }
+  await Promise.all(items.map(item => limit(() => processItem(item))));
+  // @vellox-ignore — static build manifest with a reviewed maximum size.
+  await Promise.all(assets.map(loadAsset));
+}
+`);
+    fs.writeFileSync(path.join(directory, 'src', 'controlled.py'), `import asyncio
+
+async def poll():
+    while running:
+        await fetch_status()
+        await asyncio.sleep(1)
+`);
+
+    const report = scanProject(directory, 'test');
+
+    expect(report.findings.some(item => item.file === 'src/controlled.ts' || item.file === 'src/controlled.py')).toBe(false);
+  });
+
+  it('detects Python async fan-out, blocking I/O, and sequential awaits structurally', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'async_hotspots.py'), `import asyncio
+import requests
+
+async def process_all(items):
+    requests.get("https://example.test/data")
+    await asyncio.gather(*(save(item) for item in items))
+    for item in items:
+        await client.fetch(item)
+`);
+
+    const report = scanProject(directory, 'test');
+    const findings = report.findings.filter(item => item.file === 'src/async_hotspots.py');
+
+    expect(findings.map(item => item.ruleId)).toEqual(expect.arrayContaining([
+      'code/blocking-call-in-async',
+      'code/unbounded-async-fanout',
+      'code/sequential-async-loop'
+    ]));
+    expect(findings.every(item => item.metadata?.parser === 'lezer-python')).toBe(true);
+  });
+
+  it('falls back to conservative line analysis for incomplete Python syntax', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'incomplete.py'), `def incomplete(:
+    for item in items:
+        normalized = str(item)
+        session.execute(query)
+`);
+
+    const report = scanProject(directory, 'test');
+    const finding = report.findings.find(item => item.file === 'src/incomplete.py');
+
+    expect(finding?.ruleId).toBe('code/synchronous-query-loop');
+    expect(finding?.metadata?.kind).toBe('python-loop');
+  });
+
+  it('prioritizes repeated transaction boundaries over generic loop warnings', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'transactions.py'), `def persist(items, session):
+    for item in items:
+        session.add(item)
+        session.commit()
+`);
+
+    const report = scanProject(directory, 'test');
+    const findings = report.findings.filter(item => item.file === 'src/transactions.py');
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.ruleId).toBe('code/transaction-in-loop');
+    expect(findings[0]?.line).toBe(4);
+  });
+
   it('reports one finding per sequential loop and lowers maintenance scripts to medium', () => {
     const directory = fixture();
     fs.writeFileSync(path.join(directory, 'verificar-dados.ts'), `for (const item of items) {
@@ -248,7 +358,7 @@ ${'A'.repeat(80)}
 }`);
 
     const report = scanProject(directory, 'test');
-    const findings = report.findings.filter(item => item.file === 'verificar-dados.ts' && item.ruleId === 'code/sequential-async-loop');
+    const findings = report.findings.filter(item => item.file === 'verificar-dados.ts' && item.ruleId === 'code/query-in-loop');
 
     expect(findings).toHaveLength(1);
     expect(findings[0]?.severity).toBe('MEDIUM');
@@ -314,6 +424,50 @@ $$ LANGUAGE plpgsql;
     ]));
     expect(queryFindings.some(item => item.evidence.includes('--keep this literal'))).toBe(true);
     expect(queryFindings.some(item => item.evidence.includes('audit_rows'))).toBe(false);
+  });
+
+  it('understands top-level SQL bounds instead of flagging unique lookups', () => {
+    const uniqueLookup = analyzeSqlQuery('SELECT * FROM users WHERE id = $1');
+    const paginated = analyzeSqlQuery('SELECT id FROM users ORDER BY id LIMIT ?');
+    const count = analyzeSqlQuery('SELECT COUNT(*) FROM users');
+
+    expect(uniqueLookup.map(item => item.ruleId)).toContain('query/select-star');
+    expect(uniqueLookup.map(item => item.ruleId)).not.toContain('query/unbounded-select');
+    expect(uniqueLookup.map(item => item.ruleId)).not.toContain('query/missing-filter');
+    expect(paginated).toHaveLength(0);
+    expect(count).toHaveLength(0);
+  });
+
+  it('finds expensive join, deduplication, and full-table write patterns', () => {
+    const joinQuery = analyzeSqlQuery(`SELECT DISTINCT a.id
+FROM accounts a
+JOIN users u ON u.account_id = a.id
+JOIN orders o ON o.user_id = u.id
+JOIN payments p ON p.order_id = o.id
+JOIN refunds r ON r.payment_id = p.id
+JOIN events e ON e.account_id = a.id
+GROUP BY a.id
+UNION SELECT id FROM archived_accounts`);
+    const write = analyzeSqlQuery('UPDATE users SET enabled = false');
+    const rules = joinQuery.map(item => item.ruleId);
+
+    expect(rules).toEqual(expect.arrayContaining([
+      'query/excessive-joins',
+      'query/union-deduplication',
+      'query/redundant-distinct'
+    ]));
+    expect(write.map(item => item.ruleId)).toContain('query/unbounded-write');
+  });
+
+  it('detects dynamic SQL construction in JavaScript and Python database calls', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'dynamic.ts'), 'export async function load(id) { return db.query(`SELECT * FROM users WHERE id = ${id}`); }\n');
+    fs.writeFileSync(path.join(directory, 'src', 'dynamic.py'), 'def load(user_id, session):\n    return session.execute(f"SELECT * FROM users WHERE id = {user_id}")\n');
+
+    const report = scanProject(directory, 'test');
+    const dynamic = report.findings.filter(item => item.ruleId === 'query/dynamic-sql-construction');
+
+    expect(dynamic.map(item => item.file)).toEqual(expect.arrayContaining(['src/dynamic.ts', 'src/dynamic.py']));
   });
 
   it('detects synchronous Python database calls after intermediate loop work', () => {

@@ -16,6 +16,8 @@ export interface VelloxFinding {
   metadata?: Record<string, string | number | boolean>;
 }
 
+export type VelloxFindingInput = Omit<VelloxFinding, 'fingerprint'>;
+
 export interface VelloxSummary {
   filesScanned: number;
   findings: number;

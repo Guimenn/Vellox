@@ -44,7 +44,7 @@ describe('published CLI behavior', () => {
     const reportPath = path.join(fixture, '.vellox', 'report.json');
     expect(fs.existsSync(reportPath)).toBe(true);
     const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-    expect(report.findings.some((item: { ruleId: string }) => item.ruleId === 'code/sequential-async-loop')).toBe(true);
+    expect(report.findings.some((item: { ruleId: string }) => item.ruleId === 'code/query-in-loop')).toBe(true);
 
     execFileSync(process.execPath, [cli, 'report', fixture], { encoding: 'utf8' });
     const markdown = fs.readFileSync(path.join(fixture, 'vellox-report.md'), 'utf8');
@@ -82,6 +82,16 @@ describe('published CLI behavior', () => {
 
     const inline = run(['scan', 'SELECT * FROM users', '--format', 'json']);
     expect(JSON.parse(inline).findings.some((item: { ruleId: string }) => item.ruleId === 'query/select-star')).toBe(true);
+
+    const optimized = run(['optimize', 'SELECT * FROM users WHERE id = $1', '--format', 'json']);
+    const optimizedReport = JSON.parse(optimized);
+    expect(optimizedReport.findings.some((item: { ruleId: string }) => item.ruleId === 'query/select-star')).toBe(true);
+    expect(optimizedReport.findings.some((item: { ruleId: string }) => item.ruleId === 'query/unbounded-select')).toBe(false);
+
+    const optimizationFile = path.join(fixture, 'optimization.sql');
+    fs.writeFileSync(optimizationFile, 'SELECT id FROM users WHERE id = $1;\nUPDATE users SET enabled = false;\n');
+    const fileOptimization = JSON.parse(run(['optimize', optimizationFile, '--format', 'json']));
+    expect(fileOptimization.findings.some((item: { ruleId: string }) => item.ruleId === 'query/unbounded-write')).toBe(true);
 
     const sarif = run(['scan', fixture, '--format', 'sarif', '--no-write']);
     expect(JSON.parse(sarif).version).toBe('2.1.0');

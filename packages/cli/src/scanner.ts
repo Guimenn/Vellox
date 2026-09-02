@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Severity, VelloxFinding, VelloxReport } from './types.js';
+import { scanJavaScriptStructure, scanPythonStructure } from './structural-code.js';
+import { Severity, VelloxFinding, VelloxFindingInput, VelloxReport } from './types.js';
 
 const IGNORED_DIRECTORIES = new Set([
   '.git', '.next', '.nuxt', '.output', '.turbo', '.vellox',
@@ -10,9 +11,7 @@ const IGNORED_DIRECTORIES = new Set([
 ]);
 const SOURCE_FILE = /(?:\.(?:cjs|env|js|json|jsx|mjs|prisma|py|sql|tf|tfvars|toml|ts|tsx|yaml|yml)$|^(?:Dockerfile|Containerfile)(?:\..+)?$|^\.env(?:\..+)?$|^Pipfile$|^requirements(?:\.[\w-]+)?\.txt$)/i;
 
-interface FindingInput extends Omit<VelloxFinding, 'fingerprint'> {}
-
-function fingerprint(input: FindingInput): string {
+function fingerprint(input: VelloxFindingInput): string {
   // A baseline represents the finding itself, not its current position. Keeping
   // line numbers out of the identity prevents unrelated edits above a finding
   // from making CI report it as new.
@@ -21,7 +20,7 @@ function fingerprint(input: FindingInput): string {
   return createHash('sha256').update(identity).digest('hex').slice(0, 20);
 }
 
-function finding(input: FindingInput): VelloxFinding {
+function finding(input: VelloxFindingInput): VelloxFinding {
   return { fingerprint: fingerprint(input), ...input };
 }
 
@@ -557,7 +556,7 @@ function hasSynchronousPythonQuery(code: string): boolean {
   );
 }
 
-function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: boolean): VelloxFinding[] {
+function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: boolean, inspectLegacyLoops: boolean): VelloxFinding[] {
   const results: VelloxFinding[] = [];
   const lines = content.split('\n');
   const codeLines = executableLines(content);
@@ -588,7 +587,7 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
 
     if (loop?.language === 'python' && index + 1 > loop.start && code.trim() && indent <= loop.indent) loop = null;
 
-    if (inspectCode && !ignored && !loop) {
+    if (inspectCode && inspectLegacyLoops && !ignored && !loop) {
       const jsLoop = /\b(for\s*(?:await\s*)?\(|for\s+await\s*\(|while\s*\()/.test(code);
       const pythonLoop = /^\s*(?:async\s+)?for\s+.+:|^\s*while\s+.+:/.test(code);
       if (jsLoop || pythonLoop) {
@@ -606,7 +605,7 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
 
     if (loop && hasIntentionalLoopContext(lines, index)) loop.legitimate = true;
 
-    if (inspectCode && !ignored && loop && !loop.legitimate && !loop.reported && hasAsyncWork(code)) {
+    if (inspectCode && inspectLegacyLoops && !ignored && loop && !loop.legitimate && !loop.reported && hasAsyncWork(code)) {
       results.push(finding({
         ruleId: 'code/sequential-async-loop',
         severity: sequentialLoopSeverity(relativeFile),
@@ -621,7 +620,7 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
       loop.reported = true;
     }
 
-    if (inspectCode && /\.py$/i.test(relativeFile) && !ignored && loop && !loop.legitimate && !loop.reported && hasSynchronousPythonQuery(code)) {
+    if (inspectCode && inspectLegacyLoops && /\.py$/i.test(relativeFile) && !ignored && loop && !loop.legitimate && !loop.reported && hasSynchronousPythonQuery(code)) {
       results.push(finding({
         ruleId: 'code/synchronous-query-loop',
         severity: sequentialLoopSeverity(relativeFile),
@@ -690,18 +689,140 @@ function scanCodeAndSecrets(content: string, relativeFile: string, inspectCode: 
   return results;
 }
 
+interface SqlToken {
+  word: string;
+  start: number;
+  depth: number;
+}
+
+function sqlTokens(sql: string): SqlToken[] {
+  const tokens: SqlToken[] = [];
+  let depth = 0;
+  let quote = '';
+  let dollarQuote = '';
+  let lineComment = false;
+  let blockComment = false;
+  for (let index = 0; index < sql.length; index += 1) {
+    const character = sql[index]!;
+    const next = sql[index + 1];
+    if (lineComment) {
+      if (character === '\n') lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (character === '*' && next === '/') {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (dollarQuote) {
+      if (sql.startsWith(dollarQuote, index)) {
+        index += dollarQuote.length - 1;
+        dollarQuote = '';
+      }
+      continue;
+    }
+    if (quote) {
+      if (character === quote && next === quote) index += 1;
+      else if (character === quote && sql[index - 1] !== '\\') quote = '';
+      continue;
+    }
+    if (character === '-' && next === '-') {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === '/' && next === '*') {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === '$') {
+      const tag = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(index))?.[0];
+      if (tag) {
+        dollarQuote = tag;
+        index += tag.length - 1;
+        continue;
+      }
+    }
+    if (character === "'" || character === '"' || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === '(') {
+      depth += 1;
+      continue;
+    }
+    if (character === ')') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (/[A-Za-z_]/.test(character)) {
+      let end = index + 1;
+      while (end < sql.length && /[A-Za-z0-9_$]/.test(sql[end]!)) end += 1;
+      tokens.push({ word: sql.slice(index, end).toUpperCase(), start: index, depth });
+      index = end - 1;
+    }
+  }
+  return tokens;
+}
+
+function sqlStructure(sql: string): {
+  statement: string;
+  selectStar: boolean;
+  hasFilter: boolean;
+  bounded: boolean;
+  joinCount: number;
+  unionWithoutAll: boolean;
+  redundantDistinct: boolean;
+} {
+  const tokens = sqlTokens(sql);
+  const mainIndex = tokens.findIndex(token => token.depth === 0 && /^(?:SELECT|UPDATE|DELETE|INSERT)$/.test(token.word));
+  if (mainIndex < 0) return { statement: '', selectStar: false, hasFilter: false, bounded: false, joinCount: 0, unionWithoutAll: false, redundantDistinct: false };
+  const main = tokens[mainIndex]!;
+  const top = tokens.slice(mainIndex).filter(token => token.depth === 0);
+  const has = (word: string): boolean => top.some(token => token.word === word);
+  const from = top.find(token => token.word === 'FROM');
+  const projection = main.word === 'SELECT' && from ? sql.slice(main.start + 6, from.start) : '';
+  const selectStar = /(?:^|,)\s*(?:[A-Za-z_][\w$]*\.)?\*\s*(?:,|$)/i.test(projection.trim());
+  const hasFilter = has('WHERE');
+  const hasLimit = has('LIMIT') || (has('FETCH') && has('FIRST')) || /^\s*SELECT\s+TOP\s*\(?\s*(?:\d+|\?|:\w+|@\w+)/i.test(sql);
+  const aggregateOnly = /^\s*(?:COUNT|MIN|MAX|AVG|SUM)\s*\(/i.test(projection.trim());
+  const whereStart = top.find(token => token.word === 'WHERE')?.start;
+  const endBoundary = top.find(token => whereStart !== undefined && token.start > whereStart && /^(?:ORDER|GROUP|LIMIT|FETCH|OFFSET|UNION)$/.test(token.word))?.start || sql.length;
+  const where = whereStart === undefined ? '' : sql.slice(whereStart, endBoundary);
+  const uniqueLookup = /\b(?:[A-Za-z_]\w*\.)?id\s*=\s*(?:\$\d+|\?|:\w+|@\w+|\d+|'[^']*')/i.test(where) && !/\bOR\b/i.test(where);
+  const joins = top.filter(token => token.word === 'JOIN').length;
+  const unionWithoutAll = top.some((token, index) => token.word === 'UNION' && top[index + 1]?.word !== 'ALL');
+  return {
+    statement: main.word,
+    selectStar,
+    hasFilter,
+    bounded: hasLimit || aggregateOnly || uniqueLookup,
+    joinCount: joins,
+    unionWithoutAll,
+    redundantDistinct: has('DISTINCT') && has('GROUP') && has('BY')
+  };
+}
+
 export function analyzeSqlQuery(sql: string, file?: string, line?: number): VelloxFinding[] {
-  const rules: Array<{ id: string; severity: Severity; title: string; test: RegExp; recommendation: string }> = [
-    { id: 'query/select-star', severity: 'MEDIUM', title: 'Wildcard SELECT retrieval', test: /SELECT\s+\*\s+FROM/i, recommendation: 'Select only required columns to reduce transfer and enable index-only scans.' },
-    { id: 'query/leading-wildcard', severity: 'HIGH', title: 'Leading wildcard search', test: /LIKE\s+["']%[^"']+["']/i, recommendation: 'Use prefix search or a purpose-built full-text/trigram index.' },
-    { id: 'query/unbounded-select', severity: 'MEDIUM', title: 'Unbounded SELECT query', test: /^(?![\s\S]*\bLIMIT\s+\d+)(?![\s\S]*\bCOUNT\s*\()[\s\S]*\bSELECT\b/i, recommendation: 'Add a bounded limit and cursor/keyset pagination when the predicate is not guaranteed unique.' },
-    { id: 'query/missing-filter', severity: 'MEDIUM', title: 'SELECT without a filter', test: /^(?![\s\S]*\bWHERE\b)[\s\S]*\bSELECT\b[\s\S]*\bFROM\b/i, recommendation: 'Add a selective predicate or document why the table is safely bounded.' },
-    { id: 'query/not-in-null', severity: 'HIGH', title: 'NOT IN subquery null trap', test: /NOT\s+IN\s*\(\s*SELECT/i, recommendation: 'Use NOT EXISTS or an anti-join with explicit null behavior.' },
-    { id: 'query/random-sort', severity: 'HIGH', title: 'Random full-set sort', test: /ORDER\s+BY\s+(?:RANDOM|RAND)\s*\(\s*\)/i, recommendation: 'Use sampling or indexed random slots instead of sorting the full result.' },
-    { id: 'query/function-on-filter', severity: 'MEDIUM', title: 'Function-wrapped filter column', test: /WHERE[\s\S]+?(?:date_trunc|lower|upper|substr|to_char|coalesce)\s*\(\s*["`]?\w+/i, recommendation: 'Rewrite as a sargable predicate or add a matching functional index.' },
-    { id: 'query/distinct-join', severity: 'MEDIUM', title: 'DISTINCT may hide join multiplication', test: /SELECT\s+DISTINCT\b[\s\S]+\bJOIN\b/i, recommendation: 'Review join cardinality and prefer EXISTS when only presence is required.' }
+  const structure = sqlStructure(sql);
+  const rules: Array<{ id: string; severity: Severity; title: string; test: () => boolean; recommendation: string }> = [
+    { id: 'query/select-star', severity: 'MEDIUM', title: 'Wildcard SELECT retrieval', test: () => structure.selectStar, recommendation: 'Select only required columns to reduce transfer and enable index-only scans.' },
+    { id: 'query/leading-wildcard', severity: 'HIGH', title: 'Leading wildcard search', test: () => /LIKE\s+["']%[^"']+["']/i.test(sql), recommendation: 'Use prefix search or a purpose-built full-text/trigram index.' },
+    { id: 'query/unbounded-select', severity: 'MEDIUM', title: 'Unbounded SELECT query', test: () => structure.statement === 'SELECT' && !structure.bounded, recommendation: 'Add a bounded limit and cursor/keyset pagination when the predicate is not guaranteed unique.' },
+    { id: 'query/missing-filter', severity: 'MEDIUM', title: 'SELECT without a filter', test: () => structure.statement === 'SELECT' && !structure.hasFilter && !structure.bounded, recommendation: 'Add a selective predicate or document why the table is safely bounded.' },
+    { id: 'query/not-in-null', severity: 'HIGH', title: 'NOT IN subquery null trap', test: () => /NOT\s+IN\s*\(\s*SELECT/i.test(sql), recommendation: 'Use NOT EXISTS or an anti-join with explicit null behavior.' },
+    { id: 'query/random-sort', severity: 'HIGH', title: 'Random full-set sort', test: () => /ORDER\s+BY\s+(?:RANDOM|RAND)\s*\(\s*\)/i.test(sql), recommendation: 'Use sampling or indexed random slots instead of sorting the full result.' },
+    { id: 'query/function-on-filter', severity: 'MEDIUM', title: 'Function-wrapped filter column', test: () => /WHERE[\s\S]+?(?:date_trunc|lower|upper|substr|to_char|coalesce)\s*\(\s*["`]?\w+/i.test(sql), recommendation: 'Rewrite as a sargable predicate or add a matching functional index.' },
+    { id: 'query/distinct-join', severity: 'MEDIUM', title: 'DISTINCT may hide join multiplication', test: () => /SELECT\s+DISTINCT\b[\s\S]+\bJOIN\b/i.test(sql), recommendation: 'Review join cardinality and prefer EXISTS when only presence is required.' },
+    { id: 'query/excessive-joins', severity: 'MEDIUM', title: 'Large join graph needs cardinality review', test: () => structure.joinCount >= 5, recommendation: 'Verify join cardinalities and indexes with EXPLAIN; split the query only when measurements justify it.' },
+    { id: 'query/union-deduplication', severity: 'MEDIUM', title: 'UNION performs a global deduplication', test: () => structure.unionWithoutAll, recommendation: 'Use UNION ALL when duplicate removal is not required, then validate row semantics.' },
+    { id: 'query/redundant-distinct', severity: 'MEDIUM', title: 'DISTINCT may duplicate GROUP BY work', test: () => structure.redundantDistinct, recommendation: 'Remove DISTINCT only after confirming GROUP BY already guarantees the required uniqueness.' },
+    { id: 'query/unbounded-write', severity: 'HIGH', title: 'Write statement has no WHERE clause', test: () => /^(?:UPDATE|DELETE)$/.test(structure.statement) && !structure.hasFilter, recommendation: 'Add the intended predicate or explicitly document and review the full-table write.' }
   ];
-  const results = rules.filter(rule => rule.test.test(sql)).map(rule => finding({
+  const results = rules.filter(rule => rule.test()).map(rule => finding({
     ruleId: rule.id,
     severity: rule.severity,
     category: 'query',
@@ -828,12 +949,16 @@ function scanSqlFileQueries(content: string, relativeFile: string): VelloxFindin
     const statement = source.slice(statementStart, index).trim();
     const leadingWhitespace = source.slice(statementStart, index).search(/\S/);
     const absoluteStart = statementStart + Math.max(0, leadingWhitespace);
-    if (/^(?:SELECT|WITH)\b[\s\S]*\bFROM\b/i.test(statement)) {
+    if (/^(?:SELECT|WITH|UPDATE|DELETE)\b/i.test(statement)) {
       results.push(...analyzeSqlQuery(statement, relativeFile, lineNumberAt(source, absoluteStart)));
     }
     statementStart = index + 1;
   }
   return results;
+}
+
+export function analyzeSqlDocument(content: string, file = 'inline.sql'): VelloxFinding[] {
+  return scanSqlFileQueries(content, file);
 }
 
 export function scanProject(targetDirectory: string, version: string): VelloxReport {
@@ -860,9 +985,19 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
       findings.push(...scanSqlSchema(content, relative));
       findings.push(...scanSqlFileQueries(content, relative));
     }
-    findings.push(...scanInfrastructure(content, relative));
     const inspectCode = /\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file) && !isTestOrFixtureFile(relative);
-    findings.push(...scanCodeAndSecrets(content, relative, inspectCode));
+    findings.push(...scanInfrastructure(content, relative));
+    let structurallyParsed = false;
+    if (inspectCode && /\.(?:cjs|js|jsx|mjs|ts|tsx)$/i.test(file)) {
+      const structural = scanJavaScriptStructure(content, relative);
+      structurallyParsed = structural.parsed;
+      findings.push(...structural.findings.map(finding));
+    } else if (inspectCode && /\.py$/i.test(file)) {
+      const structural = scanPythonStructure(content, relative);
+      structurallyParsed = structural.parsed;
+      findings.push(...structural.findings.map(finding));
+    }
+    findings.push(...scanCodeAndSecrets(content, relative, inspectCode, !structurallyParsed));
     if (databaseContext.detected && /\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file)) findings.push(...scanRawQueries(content, relative));
   }
 

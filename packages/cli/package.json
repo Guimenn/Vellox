@@ -1,7 +1,7 @@
 {
   "name": "vellox",
-  "version": "0.3.1",
-  "description": "Local evidence-first scanner for code, SQL, ORM schemas, and CI",
+  "version": "0.4.0",
+  "description": "Local structural analyzer for JavaScript, TypeScript, Python, and SQL performance risks",
   "bin": {
     "vellox": "dist/bin.js"
   },
@@ -38,6 +38,12 @@
     "database-optimizer",
     "sql",
     "static-analysis",
+    "javascript",
+    "typescript",
+    "python",
+    "ast",
+    "async",
+    "performance-linter",
     "docker",
     "kubernetes",
     "terraform",
@@ -52,6 +58,10 @@
   ],
   "author": "Guilherme Men",
   "license": "SEE LICENSE IN LICENSE",
+  "dependencies": {
+    "@babel/parser": "^7.29.8",
+    "@lezer/python": "^1.1.19"
+  },
   "devDependencies": {
     "tsup": "^8.3.6",
     "typescript": "^5.7.3"

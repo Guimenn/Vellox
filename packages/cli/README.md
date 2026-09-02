@@ -6,12 +6,12 @@
 
 ### Your cloud isn't expensive. Your code is.
 
-Local evidence-first scanning for code, SQL, ORM schemas, and CI.
+Local structural analysis for JavaScript, TypeScript, Python, SQL, and CI.
 Find supported risks, inspect the evidence, and review the action.
 
 [![npm](https://img.shields.io/npm/v/vellox?style=flat-square&label=npx%20vellox&labelColor=070908&color=c8ff53)](https://www.npmjs.com/package/vellox)
 [![CI](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml/badge.svg)](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml)
-[![tests](https://img.shields.io/badge/tests-85%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
+[![tests](https://img.shields.io/badge/tests-102%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-070908?style=flat-square&labelColor=070908&color=c8ff53)](./package.json)
 [![license](https://img.shields.io/badge/license-proprietary-070908?style=flat-square&labelColor=070908&color=c8ff53)](./LICENSE)
 
@@ -23,9 +23,9 @@ Find supported risks, inspect the evidence, and review the action.
 
 ## Make invisible waste visible.
 
-Vellox is a local performance and database scanner built for the gap between “something looks wrong” and “this is the supported rule, exact location, evidence, and reviewable next step.”
+Vellox is a local performance and SQL scanner built for the gap between “something looks wrong” and “this is the supported rule, exact location, evidence, and reviewable next step.”
 
-It scans application code, ORM schemas, SQL, migrations, and execution plans for expensive patterns—then turns the evidence into fixes you can review instead of mutating production behind your back.
+It parses JavaScript/TypeScript and Python structurally, inspects SQL and ORM schemas, and reports expensive patterns before they become production bottlenecks—without executing the project or mutating a database.
 
 ```text
 SCAN  ──────>  EVIDENCE  ──────>  REVIEW  ──────>  GATE
@@ -40,7 +40,7 @@ No global install. Run it from the root of the project you want to inspect:
 npx vellox
 ```
 
-Vellox scans the current directory and reports code hotspots, risky query patterns, exposed credentials, missing database indexes, and supported infrastructure-configuration risks. Every command consumes the same evidence artifact:
+Vellox scans the current directory and reports N+1 database work, sequential loops, discarded promises, unbounded async fan-out, event-loop blocking, risky SQL, exposed credentials, and missing database indexes. Every command consumes the same evidence artifact:
 
 ```text
 .vellox/report.json
@@ -56,6 +56,12 @@ Analyze one query directly:
 
 ```bash
 npx vellox scan "SELECT * FROM orders WHERE status LIKE '%pending'"
+```
+
+Analyze an SQL file with one or more statements:
+
+```bash
+npx vellox optimize queries.sql
 ```
 
 Inspect a PostgreSQL JSON execution plan:
@@ -76,8 +82,9 @@ npx vellox explain plan.json
 
 | Surface | Signals |
 | --- | --- |
-| **Application code** | Sequential async loops, synchronous Python database loops, N+1 risks, unbounded in-memory stores, hardcoded credentials |
-| **SQL & ORM** | Plain and embedded SQL, `SELECT *`, missing pagination, leading wildcards, deep offsets, missing FK indexes, Prisma and Drizzle schema gaps |
+| **JavaScript & TypeScript** | Parser-backed N+1/query loops, async `forEach`, dangling async `map`, unbounded `Promise.all`, transaction-per-item, blocking calls in async functions |
+| **Python** | Parser-backed sync/async query loops, unbounded `asyncio.gather`, blocking I/O or sync database calls in async functions, transaction-per-item |
+| **SQL & ORM** | Plain and embedded SQL, unique-lookup-aware bounds, full-table writes, large join graphs, avoidable deduplication, dynamic SQL, missing FK indexes, Prisma and Drizzle schema gaps |
 | **Infrastructure config** | Floating container images, effective final-stage users, complete Kubernetes CPU/memory policies and privileged workloads, Terraform public database/storage/ingress exposure |
 | **Execution plans** | PostgreSQL JSON plan nodes, sequential scans, external sorts, and buffer hit/read evidence |
 | **Security** | Supported API tokens, private keys, and credential-bearing database URLs with redacted output |
@@ -99,6 +106,7 @@ npx vellox explain plan.json
 | `npx vellox` | Scans the current project and creates reviewable recommendations |
 | `npx vellox <path>` | Scans a specific project directory |
 | `npx vellox scan "<sql>"` | Checks a single SQL statement for structural anti-patterns |
+| `npx vellox optimize <file.sql\|"SQL">` | Analyzes one query or every statement in a SQL file |
 | `npx vellox scan . --format json` | Emits the complete machine-readable evidence report |
 | `npx vellox scan . --format sarif` | Produces SARIF for GitHub code scanning |
 | `npx vellox explain <file>` | Diagnoses a PostgreSQL JSON `EXPLAIN` plan |
@@ -121,7 +129,8 @@ npx vellox explain plan.json
 
 | Layer | Supported integrations |
 | --- | --- |
-| **Source** | TypeScript, JavaScript, Python, plain/embedded SQL, JSON, YAML, TOML, Terraform, Dockerfile, and `.env` files |
+| **Core source analysis** | Parser-backed TypeScript, JavaScript, JSX, TSX, and Python; conservative fallback for incomplete source |
+| **Queries** | Plain `.sql` files, embedded SQL strings/templates, and direct CLI input |
 | **Schemas** | Prisma, Drizzle, and SQL DDL |
 | **Infrastructure** | Docker/Containerfile, Docker Compose, Kubernetes manifests, and Terraform |
 | **Outputs** | Terminal, JSON, Markdown, SARIF, baselines, and CI exit codes |
@@ -129,7 +138,7 @@ npx vellox explain plan.json
 
 ## Proof, not promises
 
-The repository currently passes **94 automated tests** (91 TypeScript + 3 Python), including CLI contract tests for the documented workflows and adversarial fixtures for stable/legacy baselines, repeated findings, SQL files, synchronous Python queries, multi-stage containers, Kubernetes, and Terraform.
+The repository currently passes **102 automated tests** (99 TypeScript + 3 Python), including CLI contract tests and adversarial fixtures for structural JS/TS/Python analysis, controlled concurrency, malformed-source fallback, SQL bounds, dynamic SQL, stable baselines, schemas, and manifests.
 
 Reproduce the checks on your machine:
 

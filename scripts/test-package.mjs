@@ -30,7 +30,7 @@ try {
   if (version !== 'vellox v' + pack.version) throw new Error('Installed binary version mismatch: ' + version);
   execFileSync(executable, ['scan', '.'], { cwd: packageDirectory, stdio: 'pipe' });
   const report = JSON.parse(fs.readFileSync(path.join(packageDirectory, '.vellox', 'report.json'), 'utf8'));
-  if (!report.findings.some(item => item.ruleId === 'code/sequential-async-loop')) throw new Error('Packed CLI missed fixture finding.');
+  if (!report.findings.some(item => item.ruleId === 'code/query-in-loop')) throw new Error('Packed CLI missed structural query-loop finding.');
   const gate = spawnSync(executable, ['check', '.'], { cwd: packageDirectory, encoding: 'utf8' });
   if (gate.status !== 1) throw new Error('Packed CLI gate did not fail on the real high-severity finding.');
   console.log('Packed vellox@' + pack.version + ' installed and passed scan/report/gate smoke tests.');

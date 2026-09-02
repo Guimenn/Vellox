@@ -1,6 +1,6 @@
 {
   "name": "@vellox/db-mongodb",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "MongoDB command monitoring & COLLSCAN detection telemetry adapter for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

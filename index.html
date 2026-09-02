@@ -522,14 +522,14 @@
       <div class="container">
         <div class="hero-grid">
           <div class="hero-main">
-            <a class="release-pill hero-reveal" href="https://www.npmjs.com/package/vellox" target="_blank" rel="noreferrer"><span id="npm-version">v0.3.1</span> Latest release on NPM ↗</a>
+            <a class="release-pill hero-reveal" href="https://www.npmjs.com/package/vellox" target="_blank" rel="noreferrer"><span id="npm-version">v0.4.0</span> Latest release on NPM ↗</a>
             <h1 class="hero-title" aria-label="Your cloud isn't expensive. Your code is.">
               <span class="line"><span>Your cloud isn’t</span></span>
               <span class="line"><span>expensive. <em>Your</em></span></span>
               <span class="line"><span><em>code is.</em></span></span>
             </h1>
             <div class="hero-support hero-reveal">
-              <p class="hero-copy">Vellox scans code, SQL, schemas, and infrastructure manifests locally, maps supported risks to the exact file and line, and persists an inspectable report. No daemon, database connection, cloud account, or invented savings.</p>
+              <p class="hero-copy">Vellox parses JavaScript, TypeScript, and Python locally, finds query loops and async patterns that collapse under load, and analyzes SQL down to the exact file and line. No daemon, database connection, account, or invented savings.</p>
               <div class="hero-actions">
                 <a class="btn btn-primary" href="#product">See it work <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5"/></svg></a>
                 <a class="btn btn-ghost" href="https://github.com/Guimenn/Vellox" target="_blank" rel="noreferrer">View source</a>
@@ -556,8 +556,8 @@
 
     <div class="stack-strip" aria-label="Supported technologies">
       <div class="stack-track">
-        <div class="stack-group"><span class="stack-item">TypeScript</span><span class="stack-item">JavaScript</span><span class="stack-item">Python</span><span class="stack-item">SQL</span><span class="stack-item">Prisma</span><span class="stack-item">Drizzle</span><span class="stack-item">Docker</span><span class="stack-item">Kubernetes</span><span class="stack-item">Terraform</span><span class="stack-item">SARIF</span></div>
-        <div class="stack-group" aria-hidden="true"><span class="stack-item">TypeScript</span><span class="stack-item">JavaScript</span><span class="stack-item">Python</span><span class="stack-item">SQL</span><span class="stack-item">Prisma</span><span class="stack-item">Drizzle</span><span class="stack-item">Docker</span><span class="stack-item">Kubernetes</span><span class="stack-item">Terraform</span><span class="stack-item">SARIF</span></div>
+        <div class="stack-group"><span class="stack-item">TypeScript</span><span class="stack-item">JavaScript</span><span class="stack-item">Python</span><span class="stack-item">SQL</span><span class="stack-item">Prisma</span><span class="stack-item">SQLAlchemy</span><span class="stack-item">Node.js</span><span class="stack-item">FastAPI</span><span class="stack-item">PostgreSQL</span><span class="stack-item">SARIF</span></div>
+        <div class="stack-group" aria-hidden="true"><span class="stack-item">TypeScript</span><span class="stack-item">JavaScript</span><span class="stack-item">Python</span><span class="stack-item">SQL</span><span class="stack-item">Prisma</span><span class="stack-item">SQLAlchemy</span><span class="stack-item">Node.js</span><span class="stack-item">FastAPI</span><span class="stack-item">PostgreSQL</span><span class="stack-item">SARIF</span></div>
       </div>
     </div>
 
@@ -566,7 +566,7 @@
         <aside class="thesis-aside reveal-up"><span class="kicker">The actionability gap</span><p>Monitoring tools show the fire. Vellox connects the finding to evidence and refuses to invent impact it did not measure.</p></aside>
         <div>
           <h2 class="thesis-statement reveal-up"><span class="muted">A red dashboard isn’t an answer.</span> Your team needs the query, the root cause, and the fix — before the bill arrives.</h2>
-          <div class="thesis-foot reveal-up"><p><strong>From source to evidence.</strong><br />Inspect code, plain SQL, migrations, ORM schemas, and infrastructure manifests without executing the application or contacting a database, cluster, or cloud API.</p><p><strong>From finding to action.</strong><br />Generate dialect-aware schema and SQL suggestions for human review instead of another vague alert.</p></div>
+          <div class="thesis-foot reveal-up"><p><strong>From source to evidence.</strong><br />Parse JS/TS and Python structurally, inspect plain or embedded SQL, migrations, and ORM schemas without executing the application or contacting a database.</p><p><strong>From finding to action.</strong><br />Distinguish N+1 database work, discarded promises, blocking async code, unsafe fan-out, and expensive SQL with reviewable recommendations.</p></div>
         </div>
       </div>
     </section>
@@ -575,7 +575,7 @@
       <div class="container">
         <div class="product-intro">
           <div class="reveal-up"><span class="kicker">Local code intelligence</span><h2 class="section-heading">One scan. Inspectable evidence.</h2></div>
-          <p class="section-copy reveal-up">Vellox turns supported code, database, security, and infrastructure-configuration patterns into deterministic findings your team can inspect, baseline, and gate.</p>
+          <p class="section-copy reveal-up">Vellox turns structural JavaScript, TypeScript, Python, and SQL patterns into deterministic findings your team can inspect, baseline, and gate.</p>
         </div>
         <div class="scanner-shell reveal-up" id="scanner-shell">
           <div class="scanner-topbar"><div class="window-controls" aria-hidden="true"><span></span><span></span><span></span></div><span class="scanner-file">REAL RULES / EXAMPLE SOURCE — orders.service.ts</span><button class="scanner-run" id="scanner-run" type="button">Run scan</button></div>
@@ -592,9 +592,9 @@
             <div class="diagnostic-pane" aria-live="polite">
               <div class="diagnostic-head"><div><span>Scan complete</span><strong>1 evidence-backed finding</strong></div><span class="severity">High</span></div>
               <div class="finding-list">
-                <article class="finding"><span class="finding-index">01</span><div><strong>Sequential async query loop</strong><p>Evidence captured at orders.service.ts:7</p></div><span class="finding-impact">HIGH</span></article>
+                <article class="finding"><span class="finding-index">01</span><div><strong>Database operation inside a loop</strong><p>Evidence captured at orders.service.ts:7</p></div><span class="finding-impact">HIGH</span></article>
               </div>
-              <div class="fix-preview"><span class="fix-preview-label">Scanner recommendation</span><code>Batch the operation or use bounded parallelism.<br />Review before adding // @vellox-ignore.</code></div>
+              <div class="fix-preview"><span class="fix-preview-label">Scanner recommendation</span><code>Fetch or mutate the records in bulk.<br />Remove the N+1 database round trips.</code></div>
             </div>
           </div>
         </div>
@@ -642,10 +642,10 @@
       <div class="container">
         <div class="capability-head reveal-up"><div><span class="kicker">Built for the real stack</span><h2 class="section-heading">Deep enough for engineers. Clear enough for everyone.</h2></div></div>
         <div class="capability-grid">
-          <article class="capability-card large card-reveal"><span class="card-index">01 / SOURCE INTELLIGENCE</span><div class="card-visual database-stack" aria-hidden="true"><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i></div><h3>See supported risks where they are written.</h3><p>Inspect async and synchronous database loops, plain or embedded SQL, ORM schemas, secrets, infrastructure manifests, and PostgreSQL JSON plans. Findings carry exact locations.</p></article>
+          <article class="capability-card large card-reveal"><span class="card-index">01 / STRUCTURAL INTELLIGENCE</span><div class="card-visual database-stack" aria-hidden="true"><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i></div><h3>See scaling risks where they are written.</h3><p>Parser-backed rules inspect JS/TS and Python for query loops, transactions per item, discarded promises, blocking async code, and uncontrolled concurrency. SQL rules understand statement structure and bounds.</p></article>
           <article class="capability-card tall card-reveal"><span class="card-index">02 / LOCAL BY DESIGN</span><div class="card-visual shield-visual" aria-hidden="true"></div><h3>Your source stays on your machine.</h3><p>The CLI reads files and writes a local report. No daemon, account, database connection, container, or code execution.</p></article>
           <article class="capability-card third mini-card card-reveal"><span class="card-index">03 / EVIDENCE CONTRACT</span><h3>Use the same truth everywhere.</h3><p>Pretty output, JSON, Markdown, SARIF, baselines, and CI all consume the same findings.</p><div class="mini-chart" aria-hidden="true"><span style="--h:28%"></span><span style="--h:42%"></span><span style="--h:38%"></span><span style="--h:61%"></span><span style="--h:48%"></span><span style="--h:70%"></span><span style="--h:82%"></span><span style="--h:100%"></span></div></article>
-          <article class="capability-card third mini-card card-reveal"><span class="card-index">04 / MULTI-SOURCE</span><h3>Scan the files that shape production.</h3><p>Rules for application code, SQL, ORM schemas, containers, Kubernetes, Terraform, and environment files.</p><div class="orm-list"><span>Python</span><span>SQL</span><span>Prisma</span><span>Docker</span><span>K8s</span><span>Terraform</span></div></article>
+          <article class="capability-card third mini-card card-reveal"><span class="card-index">04 / CODE + SQL</span><h3>Scan the paths that shape throughput.</h3><p>Structural rules for application code plus direct, embedded, and file-based SQL analysis.</p><div class="orm-list"><span>JS / TS</span><span>Python</span><span>SQL</span><span>Prisma</span><span>Drizzle</span><span>SQLAlchemy</span></div></article>
           <article class="capability-card third mini-card card-reveal"><span class="card-index">05 / CI GUARDRAILS</span><h3>Stop new risks before deploy.</h3><p>Fail pull requests when new findings exceed configured severity, total, or secret budgets.</p><div class="orm-list"><span>PR check</span><span>DDL review</span><span>Secret scan</span><span>Budget gate</span></div></article>
         </div>
       </div>
@@ -654,7 +654,7 @@
     <section class="section proof-section" id="benchmarks">
       <div class="container">
         <div class="proof-top"><div class="reveal-up"><span class="kicker">Measured, not marketed</span><h2 class="section-heading">Evidence in. Evidence out.</h2></div><p class="section-copy reveal-up">The scanner, reports, migrations, CI gate, and SARIF output now share one inspectable finding contract.</p></div>
-        <div class="proof-grid reveal-up"><article class="proof-stat"><span>Test suite</span><strong>94</strong><p>Workflow and adversarial rule fixtures across TypeScript and Python.</p></article><article class="proof-stat"><span>Output contract</span><strong>JSON</strong><p>Line-stable fingerprints and legacy matching keep baselines reviewable.</p></article><article class="proof-stat"><span>CI standard</span><strong>SARIF</strong><p>Findings map back to the exact source location.</p></article><article class="proof-stat"><span>Local runtime</span><strong>Node</strong><p>Scans Docker/Kubernetes/Terraform files without requiring those runtimes or an account.</p></article></div>
+        <div class="proof-grid reveal-up"><article class="proof-stat"><span>Test suite</span><strong>102</strong><p>Workflow and adversarial fixtures across JavaScript, TypeScript, Python, and SQL.</p></article><article class="proof-stat"><span>Code analysis</span><strong>AST+CST</strong><p>Real parsers distinguish nested structure, callbacks, loops, and async boundaries.</p></article><article class="proof-stat"><span>CI standard</span><strong>SARIF</strong><p>Findings map back to the exact source location.</p></article><article class="proof-stat"><span>Local runtime</span><strong>Node</strong><p>Even Python source is parsed locally without executing it or requiring a Python runtime.</p></article></div>
         <div class="proof-note"><span>Run pnpm test and pnpm benchmark on your own hardware</span><span>Methodology available on GitHub ↗</span></div>
       </div>
     </section>
@@ -667,7 +667,7 @@
   <footer class="footer">
     <div class="container">
       <div class="footer-top">
-        <div class="footer-intro"><a class="brand" href="#top"><span class="brand-mark"><img src="public/logo-signal-512.png" alt="" /></span><span class="brand-word">VELLOX</span></a><p>Code, database, and infrastructure-configuration intelligence — built by Guilherme Men.</p></div>
+        <div class="footer-intro"><a class="brand" href="#top"><span class="brand-mark"><img src="public/logo-signal-512.png" alt="" /></span><span class="brand-word">VELLOX</span></a><p>Local JavaScript, Python, and SQL performance intelligence — built by Guilherme Men.</p></div>
         <div class="footer-col"><strong>Product</strong><a href="#product">Scanner</a><a href="#workflow">Workflow</a><a href="#benchmarks">Benchmarks</a></div>
         <div class="footer-col"><strong>Developers</strong><a href="https://github.com/Guimenn/Vellox" target="_blank" rel="noreferrer">GitHub ↗</a><a href="https://www.npmjs.com/package/vellox" target="_blank" rel="noreferrer">NPM ↗</a><a href="https://github.com/Guimenn/Vellox#quick-start" target="_blank" rel="noreferrer">Docs ↗</a></div>
         <div class="footer-col"><strong>Legal</strong><a href="https://github.com/Guimenn/Vellox/blob/main/LICENSE" target="_blank" rel="noreferrer">License ↗</a><a href="https://github.com/Guimenn" target="_blank" rel="noreferrer">Creator ↗</a></div>

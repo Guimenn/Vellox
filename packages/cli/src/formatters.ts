@@ -95,12 +95,18 @@ export function evaluateBudgets(
   budgets: VelloxBudgets,
   baseline?: VelloxReport
 ): BudgetEvaluation {
+  const baselineRule = (ruleId: string): string => {
+    if (ruleId === 'code/query-in-loop' || ruleId === 'code/sequential-async-loop') return 'code/loop-async-work';
+    return ruleId;
+  };
   const semanticIdentity = (item: VelloxFinding): string => [
-    item.ruleId,
+    baselineRule(item.ruleId),
     item.file || '',
     item.evidence.trim().replace(/\s+/g, ' ')
   ].join('|');
-  const increment = (counts: Map<string, number>, key: string): void => counts.set(key, (counts.get(key) || 0) + 1);
+  const increment = (counts: Map<string, number>, key: string): void => {
+    counts.set(key, (counts.get(key) || 0) + 1);
+  };
   const decrement = (counts: Map<string, number>, key: string): boolean => {
     const count = counts.get(key) || 0;
     if (!count) return false;
