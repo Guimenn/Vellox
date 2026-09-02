@@ -601,7 +601,7 @@ function handleDemo() {
   console.log('     ├─ Impact: Prevents cluster freezes | Est. Savings: ~$420/mo | Conf: 97%');
   console.log('     └─ Action: Replace KEYS * with iterative SCAN cursor');
   console.log('');
-  console.log('✨ For interactive visualizer & FinOps ROI calculator: open website/index.html\n');
+  console.log('✨ For the interactive Vellox experience: open index.html\n');
 }
 
 function handleAiPrompt() {

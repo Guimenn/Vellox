@@ -8,7 +8,9 @@
   "main": "./dist/bin.js",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "assets"
   ],
   "scripts": {
     "build": "tsup src/bin.ts --format cjs,esm --clean",
@@ -17,6 +19,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "keywords": [
     "vellox",

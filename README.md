@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./website/public/logo-signal.png" alt="Vellox" width="132" />
+<img src="./public/logo-signal.png" alt="Vellox" width="132" />
 
 # VELLOX
 
@@ -162,7 +162,8 @@ vellox/
 ├── benchmarks/              # repeatable agent-overhead benchmark
 ├── infrastructure/          # ClickHouse, Grafana, Docker, and Kubernetes
 ├── tests/chaos/             # failure isolation and resilience tests
-└── website/                 # Vellox landing page
+├── public/                  # production brand assets
+└── index.html               # GitHub Pages landing page
 ```
 
 ## Development
@@ -183,7 +184,7 @@ pnpm cli --help
 Preview the landing page locally:
 
 ```bash
-python3 -m http.server 4173 --directory website
+python3 -m http.server 4173
 ```
 
 Then open `http://localhost:4173`.
