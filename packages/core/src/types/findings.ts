@@ -1,5 +1,5 @@
 /**
- * Waste Detection, Findings, and Impact Models for InfraWaste
+ * Waste detection, findings, and impact models for Vellox.
  */
 
 export type WasteType =
@@ -64,11 +64,3 @@ export interface PricingConfig {
   databaseHourUsd: number;
   databaseStorageGbMonthUsd?: number;
 }
-
-export const DEFAULT_PRICING: PricingConfig = {
-  cpuHourUsd: 0.04,
-  memoryGbHourUsd: 0.006,
-  networkGbUsd: 0.08,
-  databaseHourUsd: 0.20,
-  databaseStorageGbMonthUsd: 0.10
-};

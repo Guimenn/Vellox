@@ -1,14 +1,14 @@
 import type { Request, Response, NextFunction } from 'express';
-import { InfraWasteAgent } from '../agent.js';
+import { VelloxAgent } from '../agent.js';
 import { TraceContextManager } from '../context.js';
 
 /**
- * High-performance Express middleware for InfraWaste.
+ * High-performance Express middleware for Vellox.
  * Hook executes with zero blocking in < 50 microseconds.
  */
-export function infrawasteExpressMiddleware(agentInstance?: InfraWasteAgent) {
+export function velloxExpressMiddleware(agentInstance?: VelloxAgent) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const agent = agentInstance || InfraWasteAgent.getInstance();
+    const agent = agentInstance || VelloxAgent.getInstance();
     if (!agent) {
       return next();
     }
@@ -57,4 +57,3 @@ export function infrawasteExpressMiddleware(agentInstance?: InfraWasteAgent) {
     });
   };
 }
-

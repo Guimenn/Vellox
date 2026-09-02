@@ -1,11 +1,10 @@
-import { DatabaseTelemetry, Finding } from '@infrawaste/core';
-import { CostEstimator } from '@infrawaste/cost-engine';
+import { DatabaseTelemetry, Finding } from '@vellox/core';
 
 export class RedisExpensiveRule {
   /**
    * Detects dangerous/blocking Redis commands (e.g. KEYS *, SMEMBERS, LRANGE huge-range).
    */
-  public static analyze(telemetry: DatabaseTelemetry, costEstimator: CostEstimator): Finding | null {
+  public static analyze(telemetry: DatabaseTelemetry): Finding | null {
     if (telemetry.databaseType !== 'redis') return null;
 
     const isDangerousCmd = telemetry.fingerprint.includes('dangerous');
@@ -14,7 +13,6 @@ export class RedisExpensiveRule {
     if (!isDangerousCmd && !isSlowCmd) return null;
 
     const confidence = isDangerousCmd ? 97 : 82;
-    const savings = costEstimator.estimateDatabaseWasteSavings(12);
 
     return {
       id: `waste_redis_${telemetry.fingerprint}_${telemetry.timestamp}`,
@@ -25,18 +23,14 @@ export class RedisExpensiveRule {
       confidence,
       severity: isDangerousCmd ? 'CRITICAL' : 'HIGH',
       impact: {
-        databaseLoad: -12,
-        latencyPercent: -15,
-        estimatedMonthlyCost: savings.estimatedPotentialSavingsUsd
+        estimatedMonthlyCost: null
       },
       recommendation: {
         action: 'Replace blocking command with SCAN iteration, HSCAN, or targeted key lookups',
         explanation: `Command ${telemetry.operation} blocks the single-threaded Redis event loop, degrading overall latency.`,
         suggestedSolution: 'Use SCAN cursor iteration instead of KEYS, or partition sets into bounded buckets.',
         estimatedImpact: {
-          databaseLoad: -12,
-          latencyPercent: -15,
-          estimatedMonthlyCost: savings.estimatedPotentialSavingsUsd
+          estimatedMonthlyCost: null
         },
         evidence: {
           operation: telemetry.operation,

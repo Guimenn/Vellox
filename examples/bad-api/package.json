@@ -1,6 +1,6 @@
 {
-  "name": "@infrawaste/example-bad-api",
-  "version": "0.1.0",
+  "name": "@vellox/example-bad-api",
+  "version": "0.2.0",
   "private": true,
   "description": "Sample API demonstrating baseline vs instrumented high-scale endpoints",
   "type": "module",
@@ -9,14 +9,13 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@infrawaste/core": "workspace:*",
-    "@infrawaste/agent-node": "workspace:*",
-    "@infrawaste/db-core": "workspace:*",
-    "@infrawaste/db-postgres": "workspace:*",
-    "@infrawaste/db-mongodb": "workspace:*",
-    "@infrawaste/db-redis": "workspace:*",
-    "@infrawaste/cost-engine": "workspace:*",
-    "@infrawaste/analyzer": "workspace:*",
+    "@vellox/core": "workspace:*",
+    "@vellox/agent-node": "workspace:*",
+    "@vellox/db-core": "workspace:*",
+    "@vellox/db-postgres": "workspace:*",
+    "@vellox/db-mongodb": "workspace:*",
+    "@vellox/db-redis": "workspace:*",
+    "@vellox/analyzer": "workspace:*",
     "express": "^4.21.2"
   },
   "devDependencies": {

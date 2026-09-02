@@ -1,4 +1,4 @@
-import { InfraWasteAgent } from '../agent.js';
+import { VelloxAgent } from '../agent.js';
 import { TraceContextManager } from '../context.js';
 
 export interface ExecutionContextLike {
@@ -17,9 +17,9 @@ export interface CallHandlerLike {
 }
 
 /**
- * Native NestJS Interceptor for InfraWaste performance and waste monitoring.
+ * Native NestJS interceptor for Vellox performance monitoring.
  */
-export class InfraWasteInterceptor {
+export class VelloxInterceptor {
   public intercept(context: ExecutionContextLike, next: CallHandlerLike) {
     if (context.getType() !== 'http') {
       return next.handle();
@@ -28,7 +28,7 @@ export class InfraWasteInterceptor {
     const http = context.switchToHttp();
     const req = http.getRequest();
     const res = http.getResponse();
-    const agent = InfraWasteAgent.getInstance();
+    const agent = VelloxAgent.getInstance();
 
     const startNs = process.hrtime.bigint();
     const traceId =

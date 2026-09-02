@@ -2,7 +2,7 @@ import re
 import time
 import uuid
 from typing import Callable
-from ..agent import InfraWasteAgent
+from ..agent import VelloxAgent
 
 UUID_REGEX = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 OBJECT_ID_REGEX = re.compile(r"^[0-9a-f]{24}$", re.I)
@@ -29,14 +29,14 @@ def normalize_route(path: str) -> str:
     return "/" + "/".join(normalized)
 
 
-class InfraWasteMiddleware:
+class VelloxMiddleware:
     """
     Zero-overhead ASGI Middleware for FastAPI / Starlette applications.
     """
 
-    def __init__(self, app: Callable, agent: InfraWasteAgent = None):
+    def __init__(self, app: Callable, agent: VelloxAgent = None):
         self.app = app
-        self.agent = agent or InfraWasteAgent.get_instance()
+        self.agent = agent or VelloxAgent.get_instance()
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -56,7 +56,7 @@ class InfraWasteMiddleware:
                 status_code = message.get("status", 200)
                 # Inject trace ID header
                 headers = list(message.get("headers", []))
-                headers.append((b"x-infrawaste-trace-id", trace_id.encode("utf-8")))
+                headers.append((b"x-vellox-trace-id", trace_id.encode("utf-8")))
                 message["headers"] = headers
 
             await send(message)

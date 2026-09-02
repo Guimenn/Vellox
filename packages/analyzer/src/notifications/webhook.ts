@@ -1,4 +1,4 @@
-import { Finding } from '@infrawaste/core';
+import { Finding } from '@vellox/core';
 
 export class WebhookNotifier {
   /**
@@ -10,13 +10,13 @@ export class WebhookNotifier {
       : 'N/A';
 
     return {
-      text: `🚨 InfraWaste Alert: [${finding.severity}] ${finding.rootCause}`,
+      text: `🚨 Vellox Alert: [${finding.severity}] ${finding.rootCause}`,
       blocks: [
         {
           type: 'header',
           text: {
             type: 'plain_text',
-            text: `🚨 InfraWaste Waste Alert: ${finding.type}`
+            text: `🚨 Vellox Finding: ${finding.type}`
           }
         },
         {
@@ -83,7 +83,9 @@ export class WebhookNotifier {
             },
             {
               name: 'Estimated Savings',
-              value: `$${finding.impact.estimatedMonthlyCost || 0}/mo`,
+              value: finding.impact.estimatedMonthlyCost != null
+                ? `$${finding.impact.estimatedMonthlyCost}/mo`
+                : 'Unavailable without pricing context',
               inline: true
             },
             {

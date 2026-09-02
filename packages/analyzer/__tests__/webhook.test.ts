@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { WebhookNotifier } from '../src/notifications/webhook.js';
-import { Finding } from '@infrawaste/core';
+import { Finding } from '@vellox/core';
 
 describe('WebhookNotifier', () => {
   const sampleFinding: Finding = {

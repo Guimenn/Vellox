@@ -1,12 +1,11 @@
 import express from 'express';
-import { init, infrawasteExpressMiddleware, InfraWasteAgent } from '@infrawaste/agent-node';
-import { PostgresDatabaseAdapter } from '@infrawaste/db-postgres';
-import { MongoDatabaseAdapter } from '@infrawaste/db-mongodb';
-import { RedisDatabaseAdapter } from '@infrawaste/db-redis';
-import { WasteAnalyzerEngine } from '@infrawaste/analyzer';
-import { CostEstimator } from '@infrawaste/cost-engine';
+import { velloxExpressMiddleware, VelloxAgent } from '@vellox/agent-node';
+import { PostgresDatabaseAdapter } from '@vellox/db-postgres';
+import { MongoDatabaseAdapter } from '@vellox/db-mongodb';
+import { RedisDatabaseAdapter } from '@vellox/db-redis';
+import { WasteAnalyzerEngine } from '@vellox/analyzer';
 
-export function createSampleApp(enableInfrawaste: boolean = false): express.Express {
+export function createSampleApp(enableVellox: boolean = false): express.Express {
   const app = express();
   app.use(express.json());
 
@@ -19,16 +18,16 @@ export function createSampleApp(enableInfrawaste: boolean = false): express.Expr
   const redisAdapter = new RedisDatabaseAdapter();
   redisAdapter.setServiceName('bad-api');
 
-  const analyzer = new WasteAnalyzerEngine(new CostEstimator('aws'));
+  const analyzer = new WasteAnalyzerEngine();
 
-  if (enableInfrawaste) {
-    const agent = InfraWasteAgent.init({
+  if (enableVellox) {
+    const agent = VelloxAgent.init({
       serviceName: 'bad-api',
       environment: 'benchmark',
       flushIntervalMs: 5000,
       maxMemoryBytes: 30 * 1024 * 1024
     });
-    app.use(infrawasteExpressMiddleware(agent));
+    app.use(velloxExpressMiddleware(agent));
   }
 
   // Normal Fast Route
@@ -86,7 +85,7 @@ export function createSampleApp(enableInfrawaste: boolean = false): express.Expr
 
   // Live Waste Report Endpoint (Runs Analyzer over collected telemetry)
   app.get('/api/v1/waste-report', async (_req, res) => {
-    const agent = InfraWasteAgent.getInstance();
+    const agent = VelloxAgent.getInstance();
     const batch = agent ? agent.flush() : null;
 
     const dbMetrics = [
@@ -111,10 +110,10 @@ export function createSampleApp(enableInfrawaste: boolean = false): express.Expr
 }
 
 if (process.argv[1]?.includes('server.ts') || process.argv[1]?.includes('server.js')) {
-  const isInstrumented = process.env.ENABLE_INFRAWASTE !== 'false';
+  const isInstrumented = process.env.ENABLE_VELLOX !== 'false';
   const app = createSampleApp(isInstrumented);
   const port = process.env.PORT || 3000;
   app.listen(port, () => {
-    console.log(`🚀 Bad API running on http://localhost:${port} (InfraWaste: ${isInstrumented ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`🚀 Bad API running on http://localhost:${port} (Vellox: ${isInstrumented ? 'ENABLED' : 'DISABLED'})`);
   });
 }

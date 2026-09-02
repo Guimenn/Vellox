@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "infrawaste-agent"
-version = "0.1.0"
+name = "vellox-agent"
+version = "0.2.0"
 description = "High-Scale Performance, Database & Infrastructure Waste Detection Python Agent"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,17 +1,17 @@
 <div align="center">
 
-<img src="./public/logo-signal.png" alt="Vellox" width="132" />
+<img src="./public/logo-signal-512.png" alt="Vellox" width="132" />
 
 # VELLOX
 
 ### Your cloud isn't expensive. Your code is.
 
-Performance intelligence for code, databases, and cloud infrastructure.
-Find the root cause, generate a safe fix, and prove the impact.
+Local evidence-first scanning for code, SQL, ORM schemas, and CI.
+Find supported risks, inspect the evidence, and review the action.
 
 [![npm](https://img.shields.io/npm/v/vellox?style=flat-square&label=npx%20vellox&labelColor=070908&color=c8ff53)](https://www.npmjs.com/package/vellox)
 [![CI](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml/badge.svg)](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml)
-[![tests](https://img.shields.io/badge/tests-64%20%2F%2064-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
+[![tests](https://img.shields.io/badge/tests-78%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-070908?style=flat-square&labelColor=070908&color=c8ff53)](./package.json)
 [![license](https://img.shields.io/badge/license-proprietary-070908?style=flat-square&labelColor=070908&color=c8ff53)](./LICENSE)
 
@@ -23,13 +23,13 @@ Find the root cause, generate a safe fix, and prove the impact.
 
 ## Make invisible waste visible.
 
-Vellox is a performance and infrastructure intelligence engine built for the gap between “something is slow” and “this is the exact line, query, index, and monthly impact.”
+Vellox is a local performance and database scanner built for the gap between “something looks wrong” and “this is the supported rule, exact location, evidence, and reviewable next step.”
 
 It scans application code, ORM schemas, SQL, migrations, and execution plans for expensive patterns—then turns the evidence into fixes you can review instead of mutating production behind your back.
 
 ```text
-TRACE  ──────>  DIAGNOSE  ──────>  REPAIR  ──────>  PROVE
-follow flow     expose cause       review fix       measure impact
+SCAN  ──────>  EVIDENCE  ──────>  REVIEW  ──────>  GATE
+read locally    explain claim      human decides    enforce policy
 ```
 
 ## Quick start
@@ -40,10 +40,16 @@ No global install. Run it from the root of the project you want to inspect:
 npx vellox
 ```
 
-Vellox scans the current directory and reports code hotspots, risky query patterns, exposed credentials, and missing database indexes. When it finds safe SQL opportunities, it writes a review file instead of executing the migration.
+Vellox scans the current directory and reports code hotspots, risky query patterns, exposed credentials, and missing database indexes. Every command consumes the same evidence artifact:
 
 ```text
-migrations/vellox_optimizations.sql
+.vellox/report.json
+```
+
+Generate SQL only from eligible findings:
+
+```bash
+npx vellox fix
 ```
 
 Analyze one query directly:
@@ -62,9 +68,9 @@ npx vellox explain plan.json
 
 ## One scan. Full story.
 
-| 01 — Trace | 02 — Diagnose | 03 — Repair | 04 — Prove |
+| 01 — Scan | 02 — Evidence | 03 — Review | 04 — Gate |
 | --- | --- | --- | --- |
-| Follow request, route, query, and dependency signals. | Connect cost and latency to a concrete source-level cause. | Generate advisory code, schema, and SQL changes for human review. | Compare overhead, savings, and failure behavior with reproducible tests. |
+| Read supported project files locally without executing code. | Attach a rule, severity, location, redacted evidence, and fingerprint. | Provide guidance or eligible SQL suggestions without mutating the project. | Apply explicit budgets and baselines in CI. |
 
 ### What Vellox sees
 
@@ -72,17 +78,16 @@ npx vellox explain plan.json
 | --- | --- |
 | **Application code** | Sequential async loops, N+1 risks, unbounded in-memory stores, hardcoded credentials |
 | **SQL & ORM** | `SELECT *`, missing pagination, leading wildcards, deep offsets, missing FK indexes, Prisma and Drizzle schema gaps |
-| **Execution plans** | Sequential scans, cache-hit pressure, disk reads, sort spills, cardinality problems |
-| **Database telemetry** | PostgreSQL, MySQL, MariaDB, MongoDB, Redis, and Oracle adapters |
-| **Distributed systems** | Node.js and Python agents, request/query correlation, OpenTelemetry span ingestion |
-| **FinOps** | Deterministic waste findings and estimated infrastructure savings |
+| **Execution plans** | PostgreSQL JSON plan nodes, sequential scans, external sorts, and buffer hit/read evidence |
+| **Security** | Supported API tokens, private keys, and credential-bearing database URLs with redacted output |
 
 ### Safe by design
 
 - **Advisory by default.** The scanner does not connect to or mutate your production database.
 - **Review before apply.** Generated DDL is written to a migration file for human approval.
-- **Bounded telemetry.** Queues, route cardinality, and in-memory buffers have explicit guardrails.
-- **Failure independence.** A collector outage must not take down the monitored application.
+- **Local by default.** The published CLI needs only Node.js 20+; no Docker, Kubernetes, daemon, database, or account is required.
+- **No code execution.** Project files are read as text and the report stays on disk.
+- **Redacted credentials.** Secret findings never echo the complete matched value.
 - **Intentional escape hatch.** Use `// @vellox-ignore` for reviewed loops or batch routines.
 
 ## CLI reference
@@ -92,44 +97,36 @@ npx vellox explain plan.json
 | `npx vellox` | Scans the current project and creates reviewable recommendations |
 | `npx vellox <path>` | Scans a specific project directory |
 | `npx vellox scan "<sql>"` | Checks a single SQL statement for structural anti-patterns |
+| `npx vellox scan . --format json` | Emits the complete machine-readable evidence report |
+| `npx vellox scan . --format sarif` | Produces SARIF for GitHub code scanning |
 | `npx vellox explain <file>` | Diagnoses a PostgreSQL JSON `EXPLAIN` plan |
 | `npx vellox ai "<sql>"` | Creates a structured optimization prompt for an AI coding assistant |
-| `npx vellox fix` | Generates a starter SQL migration for review |
+| `npx vellox fix` | Generates SQL only from fixes attached to the current report |
 | `npx vellox ddl <file>` | Checks a SQL migration for risky schema patterns |
 | `npx vellox discover [path]` | Detects frameworks, ORMs, and database dependencies |
 | `npx vellox doctor` | Validates the local Node.js, CPU, and memory environment |
 | `npx vellox init` | Creates `vellox.config.json` |
 | `npx vellox hook` | Installs a local pre-commit Vellox gate |
 | `npx vellox ci` | Generates a GitHub Actions workflow |
-| `npx vellox check` | Runs the current CI performance-budget gate |
-| `npx vellox report [out]` | Writes the simulated executive cost report in Markdown |
-| `npx vellox demo` | Runs a clearly labeled synthetic waste-analysis demo |
-| `npx vellox top` | Prints the terminal cost and hotspot overview |
+| `npx vellox check` | Applies real critical/high/secret budgets to the current scan |
+| `npx vellox baseline` | Saves accepted fingerprints so CI can fail only on new findings |
+| `npx vellox report` | Writes a Markdown report from `.vellox/report.json` |
+| `npx vellox demo` | Runs the real scanner against a temporary sample project |
+| `npx vellox top` | Summarizes the current report without pretending it is live telemetry |
 | `npx vellox --help` | Shows commands and shortcuts |
 
 ## Support matrix
 
 | Layer | Supported integrations |
 | --- | --- |
-| **Node.js** | Express, Fastify, NestJS, Prisma, TypeORM |
-| **Python** | FastAPI, Starlette, SQLAlchemy |
-| **Databases** | PostgreSQL, MySQL, MariaDB, MongoDB, Redis, Oracle |
-| **Telemetry** | Native trace context plus OpenTelemetry OTLP spans |
-| **Infrastructure** | ClickHouse storage, Prometheus metrics, Grafana dashboard, Kubernetes manifests |
+| **Source** | TypeScript, JavaScript, Python, SQL, JSON, YAML, TOML, and `.env` files |
+| **Schemas** | Prisma, Drizzle, and SQL DDL |
+| **Outputs** | Terminal, JSON, Markdown, SARIF, baselines, and CI exit codes |
+| **Local runtime** | Node.js 20+; no container or background service required |
 
 ## Proof, not promises
 
-The repository currently passes **64 of 64 automated tests** across its packages, adapters, collector, examples, and resilience checks.
-
-The reference overhead benchmark runs on a 12-core Linux x64 environment with 50 concurrent connections:
-
-| Metric | Without Vellox | With Vellox | Observed delta | Guardrail |
-| --- | ---: | ---: | ---: | ---: |
-| Requests | 92,550 | 130,975 | +38,425 | no throughput drop |
-| P50 latency | 2.00 ms | 1.00 ms | -1.00 ms | ≤ 1.0 ms |
-| P95 latency | 0.00 ms | 0.00 ms | +0.00 ms | < 2.0 ms |
-| Process RSS | 134.10 MB | 145.28 MB | +11.18 MB | < 30 MB |
-| Event-loop lag | 0.00 ms | 0.00 ms | 0.00 ms | 0.00 ms |
+The repository currently passes **78 automated tests** (75 TypeScript + 3 Python), including CLI contract tests that prove scan → report → fix → gate behavior from actual fixture files.
 
 Reproduce the checks on your machine:
 
@@ -137,10 +134,9 @@ Reproduce the checks on your machine:
 corepack enable
 pnpm install
 pnpm test
-pnpm benchmark
 ```
 
-> Benchmark numbers describe the checked-in reference run, not a universal promise. Hardware, workload, runtime, and database conditions matter.
+> Hardware, runtime, workload, and database conditions matter. Treat any performance number without a reproducible run as marketing, not evidence.
 
 ## Architecture
 
@@ -157,10 +153,9 @@ vellox/
 │   ├── explain-analyzer/    # execution-plan diagnostics
 │   ├── schema-advisor/      # migration and DDL analysis
 │   └── otel-bridge/         # OTLP trace ingestion
-├── apps/collector/          # stateless telemetry collector and SSE stream
+├── apps/collector/          # internal telemetry research module; not used by the published CLI
 ├── examples/bad-api/        # intentionally wasteful reference workload
 ├── benchmarks/              # repeatable agent-overhead benchmark
-├── infrastructure/          # ClickHouse, Grafana, Docker, and Kubernetes
 ├── tests/chaos/             # failure isolation and resilience tests
 ├── public/                  # production brand assets
 └── index.html               # GitHub Pages landing page

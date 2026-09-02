@@ -1,5 +1,5 @@
-import { DatabaseTelemetry, DatabaseType, HttpTelemetry } from '@infrawaste/core';
-import { SqlFingerprinter } from '@infrawaste/db-core';
+import { DatabaseTelemetry, DatabaseType, HttpTelemetry } from '@vellox/core';
+import { SqlFingerprinter } from '@vellox/db-core';
 
 export class OtelTransformer {
   private static extractAttribute(attributes: any[] = [], key: string): any {
@@ -10,7 +10,7 @@ export class OtelTransformer {
   }
 
   /**
-   * Transforms standard OpenTelemetry OTLP trace JSON payloads into InfraWaste telemetry.
+   * Transforms standard OpenTelemetry OTLP trace JSON payloads into Vellox telemetry.
    */
   public static transformOtlpExport(otlpPayload: any): {
     httpTelemetries: HttpTelemetry[];

@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as crypto from 'node:crypto';
-import { TraceContext } from '@infrawaste/core';
+import { TraceContext } from '@vellox/core';
 
 export class TraceContextManager {
   private static storage = new AsyncLocalStorage<TraceContext>();

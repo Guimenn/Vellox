@@ -1,21 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { InfraWasteAgent, infrawasteExpressMiddleware } from '../../packages/agent-node/src/index.js';
+import { VelloxAgent, velloxExpressMiddleware } from '../../packages/agent-node/src/index.js';
 import { BoundedTelemetryBuffer, TelemetryBatch } from '../../packages/core/src/index.js';
 
 describe('Chaos & Resilience Testing (Failure Independence)', () => {
   beforeEach(() => {
-    InfraWasteAgent.resetInstance();
+    VelloxAgent.resetInstance();
   });
 
   afterEach(() => {
-    InfraWasteAgent.resetInstance();
+    VelloxAgent.resetInstance();
   });
 
   it('Principle 10: Application must continue operating normally when Collector is DOWN', async () => {
     // Point agent to a non-existent port (collector down)
-    const agent = InfraWasteAgent.init({
+    const agent = VelloxAgent.init({
       serviceName: 'resilience-test-service',
       environment: 'test',
       collectorEndpoint: 'http://127.0.0.1:59999/api/v1/telemetry/batches', // Unreachable
@@ -23,7 +23,7 @@ describe('Chaos & Resilience Testing (Failure Independence)', () => {
     });
 
     const app = express();
-    app.use(infrawasteExpressMiddleware(agent));
+    app.use(velloxExpressMiddleware(agent));
     app.get('/api/v1/checkout', (_req, res) => {
       res.status(200).json({ success: true, timestamp: Date.now() });
     });
@@ -53,7 +53,7 @@ describe('Chaos & Resilience Testing (Failure Independence)', () => {
       metadata: {
         service: 'flood-service',
         environment: 'chaos-test',
-        agentVersion: '0.1.0',
+        agentVersion: '0.2.0',
         hostname: 'localhost',
         droppedBatches: 0,
         droppedEvents: 0,

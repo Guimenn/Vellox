@@ -1,5 +1,5 @@
 import * as crypto from 'node:crypto';
-import { NormalizedQuery } from '@infrawaste/core';
+import { NormalizedQuery } from '@vellox/core';
 
 const SQL_COMMENT_REGEX = /(--[^\n]*|\/\*[\s\S]*?\*\/)/g;
 const STRING_LITERAL_REGEX = /'(''|[^'])*'/g;

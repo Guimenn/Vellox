@@ -1,7 +1,7 @@
 {
-  "name": "@infrawaste/otel-bridge",
-  "version": "0.1.0",
-  "description": "OpenTelemetry OTLP traces & spans bridge for InfraWaste",
+  "name": "@vellox/otel-bridge",
+  "version": "0.2.0",
+  "description": "OpenTelemetry OTLP traces & spans bridge for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -13,8 +13,8 @@
     }
   },
   "dependencies": {
-    "@infrawaste/core": "workspace:*",
-    "@infrawaste/db-core": "workspace:*"
+    "@vellox/core": "workspace:*",
+    "@vellox/db-core": "workspace:*"
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",

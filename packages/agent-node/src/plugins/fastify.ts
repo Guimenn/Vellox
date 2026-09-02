@@ -1,4 +1,4 @@
-import { InfraWasteAgent } from '../agent.js';
+import { VelloxAgent } from '../agent.js';
 import { TraceContextManager } from '../context.js';
 
 export interface FastifyLikeRequest {
@@ -29,14 +29,14 @@ export interface FastifyLikeInstance {
 const reqStartTimes = new WeakMap<FastifyLikeRequest, bigint>();
 
 /**
- * Native, zero-blocking Fastify plugin for InfraWaste telemetry.
+ * Native Fastify plugin for Vellox telemetry.
  */
-export function infrawasteFastifyPlugin(
+export function velloxFastifyPlugin(
   fastify: FastifyLikeInstance,
   _options: Record<string, any>,
   done: (err?: Error) => void
 ): void {
-  const agent = InfraWasteAgent.getInstance();
+  const agent = VelloxAgent.getInstance();
 
   fastify.addHook('onRequest', (req, reply, next) => {
     const startNs = process.hrtime.bigint();

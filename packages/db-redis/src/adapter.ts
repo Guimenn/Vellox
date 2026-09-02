@@ -2,8 +2,8 @@ import {
   DatabaseCapabilities,
   DatabaseHealth,
   DatabaseType
-} from '@infrawaste/core';
-import { BaseDatabaseAdapter } from '@infrawaste/db-core';
+} from '@vellox/core';
+import { BaseDatabaseAdapter } from '@vellox/db-core';
 
 export interface RedisInfoData {
   used_memory?: number | string;

@@ -1,9 +1,10 @@
 {
-  "serviceName": "cli",
-  "environment": "production",
-  "flushIntervalMs": 5000,
-  "maxMemoryBytes": 31457280,
-  "cardinality": {
-    "maxUniqueRoutes": 500
+  "reportPath": ".vellox/report.json",
+  "baselinePath": ".vellox/baseline.json",
+  "budgets": {
+    "maxCritical": 0,
+    "maxHigh": 0,
+    "maxTotal": null,
+    "failOnSecrets": true
   }
 }

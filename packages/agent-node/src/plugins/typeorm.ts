@@ -1,4 +1,4 @@
-import { BaseDatabaseAdapter } from '@infrawaste/db-core';
+import { BaseDatabaseAdapter } from '@vellox/db-core';
 import { TraceContextManager } from '../context.js';
 
 export interface TypeormLoggerLike {
@@ -11,7 +11,7 @@ export interface TypeormLoggerLike {
 }
 
 /**
- * Creates a TypeORM custom logger that sends query telemetry to InfraWaste.
+ * Creates a TypeORM custom logger that sends query telemetry to Vellox.
  */
 export function createTypeormLogger(adapter: BaseDatabaseAdapter): TypeormLoggerLike {
   return {

@@ -3,8 +3,8 @@ import {
   DatabaseHealth,
   DatabaseTelemetry,
   DatabaseType
-} from '@infrawaste/core';
-import { BaseDatabaseAdapter, SqlFingerprinter } from '@infrawaste/db-core';
+} from '@vellox/core';
+import { BaseDatabaseAdapter, SqlFingerprinter } from '@vellox/db-core';
 
 export interface MysqlDigestRow {
   SCHEMA_NAME?: string;

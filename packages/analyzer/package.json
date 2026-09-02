@@ -1,7 +1,7 @@
 {
-  "name": "@infrawaste/analyzer",
-  "version": "0.1.0",
-  "description": "Evidence-backed waste intelligence & root cause analysis engine for InfraWaste",
+  "name": "@vellox/analyzer",
+  "version": "0.2.0",
+  "description": "Evidence-backed waste intelligence & root cause analysis engine for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -13,8 +13,7 @@
     }
   },
   "dependencies": {
-    "@infrawaste/core": "workspace:*",
-    "@infrawaste/cost-engine": "workspace:*"
+    "@vellox/core": "workspace:*"
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",

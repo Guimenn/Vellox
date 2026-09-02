@@ -1,5 +1,4 @@
-import { DatabaseTelemetry, Finding, HttpAggregateTelemetry } from '@infrawaste/core';
-import { CostEstimator } from '@infrawaste/cost-engine';
+import { DatabaseTelemetry, Finding, HttpAggregateTelemetry } from '@vellox/core';
 
 export class NPlusOneRule {
   /**
@@ -7,8 +6,7 @@ export class NPlusOneRule {
    */
   public static analyze(
     httpRoute: HttpAggregateTelemetry,
-    childQuery: DatabaseTelemetry,
-    costEstimator: CostEstimator
+    childQuery: DatabaseTelemetry
   ): Finding | null {
     if (httpRoute.totalRequests < 10) return null;
 
@@ -17,8 +15,6 @@ export class NPlusOneRule {
     if (queriesPerRequest < 5) return null;
 
     const confidence = Math.min(96, Math.round(85 + Math.min(10, queriesPerRequest)));
-    const estimatedCapacityWaste = Math.min(45, Math.round(queriesPerRequest * 1.8));
-    const savings = costEstimator.estimateDatabaseWasteSavings(estimatedCapacityWaste);
 
     return {
       id: `waste_nplus1_${httpRoute.route}_${childQuery.fingerprint}_${Date.now()}`,
@@ -30,18 +26,14 @@ export class NPlusOneRule {
       confidence,
       severity: 'CRITICAL',
       impact: {
-        databaseLoad: -estimatedCapacityWaste,
-        latencyPercent: -28,
-        estimatedMonthlyCost: savings.estimatedPotentialSavingsUsd
+        estimatedMonthlyCost: null
       },
       recommendation: {
         action: 'Refactor ORM query with eager loading (JOIN FETCH, include) or DataLoader batching',
         explanation: `Each request to ${httpRoute.route} triggers ~${queriesPerRequest.toFixed(0)} individual child queries (${childQuery.fingerprint}).`,
         suggestedSolution: 'Replace loop queries with batch WHERE id IN (?) or ORM eager relations.',
         estimatedImpact: {
-          databaseLoad: -estimatedCapacityWaste,
-          latencyPercent: -28,
-          estimatedMonthlyCost: savings.estimatedPotentialSavingsUsd
+          estimatedMonthlyCost: null
         },
         evidence: {
           httpRoute: httpRoute.route,

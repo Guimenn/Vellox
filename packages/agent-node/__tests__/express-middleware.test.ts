@@ -1,23 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { InfraWasteAgent } from '../src/agent.js';
-import { infrawasteExpressMiddleware } from '../src/middleware/express.js';
+import { VelloxAgent } from '../src/agent.js';
+import { velloxExpressMiddleware } from '../src/middleware/express.js';
 
-describe('infrawasteExpressMiddleware', () => {
+describe('velloxExpressMiddleware', () => {
   let app: express.Express;
-  let agent: InfraWasteAgent;
+  let agent: VelloxAgent;
 
   beforeEach(() => {
-    InfraWasteAgent.resetInstance();
-    agent = InfraWasteAgent.init({
+    VelloxAgent.resetInstance();
+    agent = VelloxAgent.init({
       serviceName: 'express-test-app',
       environment: 'test',
       flushIntervalMs: 60000
     });
 
     app = express();
-    app.use(infrawasteExpressMiddleware(agent));
+    app.use(velloxExpressMiddleware(agent));
 
     app.get('/api/users/:id', (req, res) => {
       res.status(200).json({ id: req.params.id, name: 'Alice' });
@@ -29,7 +29,7 @@ describe('infrawasteExpressMiddleware', () => {
   });
 
   afterEach(() => {
-    InfraWasteAgent.resetInstance();
+    VelloxAgent.resetInstance();
   });
 
   it('should intercept Express requests and record accurate aggregated metrics', async () => {

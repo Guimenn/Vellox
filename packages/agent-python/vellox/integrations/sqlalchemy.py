@@ -1,7 +1,7 @@
 import re
 import time
 from typing import Any
-from ..agent import InfraWasteAgent
+from ..agent import VelloxAgent
 
 LITERAL_REGEX = re.compile(r"['\"][^'\"]*['\"]|\b\d+\b")
 SPACE_REGEX = re.compile(r"\s+")
@@ -13,7 +13,7 @@ def fingerprint_sql(statement: str) -> str:
     return SPACE_REGEX.sub(" ", norm)
 
 
-def bind_sqlalchemy_telemetry(engine: Any, agent: InfraWasteAgent = None) -> None:
+def bind_sqlalchemy_telemetry(engine: Any, agent: VelloxAgent = None) -> None:
     """
     Hooks into SQLAlchemy Engine execution events to capture query durations and fingerprints.
     """
@@ -22,7 +22,7 @@ def bind_sqlalchemy_telemetry(engine: Any, agent: InfraWasteAgent = None) -> Non
     except ImportError:
         return
 
-    active_agent = agent or InfraWasteAgent.get_instance()
+    active_agent = agent or VelloxAgent.get_instance()
 
     @event.listens_for(engine, "before_cursor_execute")
     def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):

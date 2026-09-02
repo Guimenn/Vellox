@@ -1,10 +1,10 @@
 import unittest
-from infrawaste.agent import InfraWasteAgent
-from infrawaste.middleware.fastapi import normalize_route
-from infrawaste.integrations.sqlalchemy import fingerprint_sql
+from vellox.agent import VelloxAgent
+from vellox.middleware.fastapi import normalize_route
+from vellox.integrations.sqlalchemy import fingerprint_sql
 
 
-class TestInfraWastePythonAgent(unittest.TestCase):
+class TestVelloxPythonAgent(unittest.TestCase):
     def test_route_normalization(self):
         self.assertEqual(normalize_route("/api/v1/users/12345"), "/api/v1/users/:id")
         self.assertEqual(
@@ -22,7 +22,7 @@ class TestInfraWastePythonAgent(unittest.TestCase):
         self.assertEqual(fp, "SELECT * FROM users WHERE id = ? AND email = ?")
 
     def test_agent_recording_and_buffering(self):
-        agent = InfraWasteAgent(service_name="test-py-svc", flush_interval_seconds=60.0)
+        agent = VelloxAgent(service_name="test-py-svc", flush_interval_seconds=60.0)
         agent.record_http({
             "route": "/api/v1/health",
             "method": "GET",

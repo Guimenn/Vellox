@@ -1,7 +1,7 @@
 {
   "name": "vellox",
-  "version": "0.1.8",
-  "description": "Vellox - High-Scale Performance, Database & Infrastructure Waste Detection CLI",
+  "version": "0.2.0",
+  "description": "Local evidence-first scanner for code, SQL, ORM schemas, and CI",
   "bin": {
     "vellox": "dist/bin.js"
   },
@@ -9,8 +9,7 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE",
-    "assets"
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsup src/bin.ts --format cjs,esm --clean",
@@ -20,12 +19,20 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Guimenn/Vellox.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://guimenn.github.io/Vellox/",
+  "bugs": {
+    "url": "https://github.com/Guimenn/Vellox/issues"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
   "keywords": [
     "vellox",
-    "infrawaste",
     "finops",
     "performance",
     "database-optimizer",

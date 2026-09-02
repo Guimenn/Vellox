@@ -10,7 +10,7 @@ describe('BoundedTelemetryBuffer', () => {
     metadata: {
       service: 'test-service',
       environment: 'test',
-      agentVersion: '0.1.0',
+      agentVersion: '0.2.0',
       hostname: 'localhost',
       droppedBatches: 0,
       droppedEvents: 0,

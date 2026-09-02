@@ -2,8 +2,8 @@ import {
   DatabaseCapabilities,
   DatabaseHealth,
   DatabaseType
-} from '@infrawaste/core';
-import { BaseDatabaseAdapter, MongoFingerprinter } from '@infrawaste/db-core';
+} from '@vellox/core';
+import { BaseDatabaseAdapter, MongoFingerprinter } from '@vellox/db-core';
 
 export interface MongoCommandSucceededEvent {
   commandName: string;

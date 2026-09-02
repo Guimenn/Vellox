@@ -1,4 +1,4 @@
-import { HttpAggregateTelemetry, LogHistogram, RouteNormalizer } from '@infrawaste/core';
+import { HttpAggregateTelemetry, LogHistogram, RouteNormalizer } from '@vellox/core';
 import { CardinalityConfig } from './config.js';
 
 interface RouteAggregateState {

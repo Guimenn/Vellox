@@ -1,17 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { InfraWasteAgent } from '../src/agent.js';
+import { VelloxAgent } from '../src/agent.js';
 
-describe('InfraWasteAgent', () => {
+describe('VelloxAgent', () => {
   beforeEach(() => {
-    InfraWasteAgent.resetInstance();
+    VelloxAgent.resetInstance();
   });
 
   afterEach(() => {
-    InfraWasteAgent.resetInstance();
+    VelloxAgent.resetInstance();
   });
 
   it('should initialize as a singleton and record HTTP requests', () => {
-    const agent = InfraWasteAgent.init({
+    const agent = VelloxAgent.init({
       serviceName: 'order-service',
       environment: 'test',
       flushIntervalMs: 60000 // avoid auto-flush in test
@@ -38,7 +38,7 @@ describe('InfraWasteAgent', () => {
   });
 
   it('should return null on flush when no requests were recorded', () => {
-    const agent = InfraWasteAgent.init({ flushIntervalMs: 60000 });
+    const agent = VelloxAgent.init({ flushIntervalMs: 60000 });
     const batch = agent.flush();
     expect(batch).toBeNull();
   });

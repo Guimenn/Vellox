@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#070908" />
-  <meta name="description" content="Vellox finds database and infrastructure waste, explains the root cause, and generates safe fixes before the cloud bill grows." />
+  <meta name="description" content="Vellox finds database and infrastructure risks, explains the evidence, and generates reviewable suggestions without inventing savings." />
   <meta property="og:title" content="Vellox — Make invisible waste visible." />
-  <meta property="og:description" content="Performance intelligence for code, databases, and cloud infrastructure." />
-  <meta property="og:image" content="public/logo-signal.png" />
-  <title>Vellox — Performance intelligence that fixes the root cause</title>
-  <link rel="icon" href="public/logo-signal.png" type="image/png" />
-  <link rel="apple-touch-icon" href="public/logo-signal.png" />
+  <meta property="og:description" content="Local evidence-first scanner for code, SQL, ORM schemas, and CI." />
+  <meta property="og:image" content="https://guimenn.github.io/Vellox/public/logo-signal-512.png" />
+  <title>Vellox — Local evidence-first performance scanner</title>
+  <link rel="icon" href="public/favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="public/apple-touch-icon.png" sizes="180x180" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -505,13 +505,13 @@
 
   <header class="site-header">
     <div class="container nav">
-      <a class="brand" href="#top" aria-label="Vellox home"><span class="brand-mark"><img src="public/logo-signal.png" alt="" /></span><span class="brand-word">VELLOX</span></a>
+      <a class="brand" href="#top" aria-label="Vellox home"><span class="brand-mark"><img src="public/logo-signal-512.png" alt="" /></span><span class="brand-word">VELLOX</span></a>
       <nav class="nav-links" aria-label="Main navigation">
         <a href="#product">Product</a><a href="#workflow">How it works</a><a href="#capabilities">Capabilities</a><a href="#benchmarks">Benchmarks</a>
       </nav>
       <div class="nav-actions">
-        <a class="github-link" href="https://github.com/Guimenn/vellox" target="_blank" rel="noreferrer">GitHub ↗</a>
-        <a class="btn btn-primary" href="https://github.com/Guimenn/vellox" target="_blank" rel="noreferrer">Run Vellox</a>
+        <a class="github-link" href="https://github.com/Guimenn/Vellox" target="_blank" rel="noreferrer">GitHub ↗</a>
+        <a class="btn btn-primary" href="https://github.com/Guimenn/Vellox" target="_blank" rel="noreferrer">Run Vellox</a>
         <button class="menu-toggle" type="button" aria-expanded="false" aria-label="Toggle navigation"><span></span></button>
       </div>
     </div>
@@ -529,10 +529,10 @@
               <span class="line"><span><em>code is.</em></span></span>
             </h1>
             <div class="hero-support hero-reveal">
-              <p class="hero-copy">Vellox traces database waste back to the exact line of code, calculates its cloud cost, and generates a safe fix you can review.</p>
+              <p class="hero-copy">Vellox scans your project locally, maps supported risks to the exact file and line, and persists an inspectable report. No daemon, database connection, account, or invented savings.</p>
               <div class="hero-actions">
                 <a class="btn btn-primary" href="#product">See it work <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5"/></svg></a>
-                <a class="btn btn-ghost" href="https://github.com/Guimenn/vellox" target="_blank" rel="noreferrer">View source</a>
+                <a class="btn btn-ghost" href="https://github.com/Guimenn/Vellox" target="_blank" rel="noreferrer">View source</a>
               </div>
             </div>
           </div>
@@ -542,31 +542,31 @@
               <ol class="hero-minimal-list">
                 <li><span>01</span><strong>Find the waste.</strong></li>
                 <li><span>02</span><strong>Explain the cause.</strong></li>
-                <li><span>03</span><strong>Generate the fix.</strong></li>
+                <li><span>03</span><strong>Review the action.</strong></li>
               </ol>
-              <a class="hero-minimal-command" href="https://github.com/Guimenn/vellox" target="_blank" rel="noreferrer"><code>npx vellox</code><span>View on GitHub ↗</span></a>
+              <a class="hero-minimal-command" href="https://github.com/Guimenn/Vellox" target="_blank" rel="noreferrer"><code>npx vellox</code><span>View on GitHub ↗</span></a>
             </div>
           </aside>
         </div>
         <div class="hero-meta hero-reveal">
-          <div class="hero-stat"><strong>&lt;1ms</strong><span>Target agent overhead</span></div><div class="hero-stat"><strong>6 DBs</strong><span>One intelligence layer</span></div><div class="hero-stat"><strong>0 locks</strong><span>Concurrent safe fixes</span></div><div class="hero-stat"><strong>100%</strong><span>Advisory by default</span></div>
+          <div class="hero-stat"><strong>JSON</strong><span>One evidence artifact</span></div><div class="hero-stat"><strong>SARIF</strong><span>Native CI findings</span></div><div class="hero-stat"><strong>0 exec</strong><span>Never applies DDL</span></div><div class="hero-stat"><strong>100%</strong><span>Advisory by default</span></div>
         </div>
       </div>
     </section>
 
     <div class="stack-strip" aria-label="Supported technologies">
       <div class="stack-track">
-        <div class="stack-group"><span class="stack-item">PostgreSQL</span><span class="stack-item">MySQL</span><span class="stack-item">MongoDB</span><span class="stack-item">Redis</span><span class="stack-item">Oracle</span><span class="stack-item">Prisma</span><span class="stack-item">TypeORM</span><span class="stack-item">SQLAlchemy</span><span class="stack-item">OpenTelemetry</span></div>
-        <div class="stack-group" aria-hidden="true"><span class="stack-item">PostgreSQL</span><span class="stack-item">MySQL</span><span class="stack-item">MongoDB</span><span class="stack-item">Redis</span><span class="stack-item">Oracle</span><span class="stack-item">Prisma</span><span class="stack-item">TypeORM</span><span class="stack-item">SQLAlchemy</span><span class="stack-item">OpenTelemetry</span></div>
+        <div class="stack-group"><span class="stack-item">TypeScript</span><span class="stack-item">JavaScript</span><span class="stack-item">Python</span><span class="stack-item">SQL</span><span class="stack-item">Prisma</span><span class="stack-item">Drizzle</span><span class="stack-item">PostgreSQL</span><span class="stack-item">JSON</span><span class="stack-item">SARIF</span></div>
+        <div class="stack-group" aria-hidden="true"><span class="stack-item">TypeScript</span><span class="stack-item">JavaScript</span><span class="stack-item">Python</span><span class="stack-item">SQL</span><span class="stack-item">Prisma</span><span class="stack-item">Drizzle</span><span class="stack-item">PostgreSQL</span><span class="stack-item">JSON</span><span class="stack-item">SARIF</span></div>
       </div>
     </div>
 
     <section class="section thesis-section">
       <div class="container thesis-grid">
-        <aside class="thesis-aside reveal-up"><span class="kicker">The actionability gap</span><p>Monitoring tools show the fire. Vellox finds the match, the exact cost, and the safest way to put it out.</p></aside>
+        <aside class="thesis-aside reveal-up"><span class="kicker">The actionability gap</span><p>Monitoring tools show the fire. Vellox connects the finding to evidence and refuses to invent impact it did not measure.</p></aside>
         <div>
           <h2 class="thesis-statement reveal-up"><span class="muted">A red dashboard isn’t an answer.</span> Your team needs the query, the root cause, and the fix — before the bill arrives.</h2>
-          <div class="thesis-foot reveal-up"><p><strong>From telemetry to source.</strong><br />Correlate traces, queries, routes, and ORM calls without turning your app into a data exhaust pipe.</p><p><strong>From finding to action.</strong><br />Generate reviewable schema diffs and zero-downtime SQL instead of another alert for the backlog.</p></div>
+          <div class="thesis-foot reveal-up"><p><strong>From source to evidence.</strong><br />Inspect code, SQL, migrations, and ORM schemas without executing the application or contacting a database.</p><p><strong>From finding to action.</strong><br />Generate dialect-aware schema and SQL suggestions for human review instead of another vague alert.</p></div>
         </div>
       </div>
     </section>
@@ -574,11 +574,11 @@
     <section class="section product-section" id="product">
       <div class="container">
         <div class="product-intro">
-          <div class="reveal-up"><span class="kicker">Live code intelligence</span><h2 class="section-heading">One scan. The full story.</h2></div>
-          <p class="section-copy reveal-up">Vellox turns a performance smell into an explainable, quantified diagnosis — right down to the migration your team can review.</p>
+          <div class="reveal-up"><span class="kicker">Local code intelligence</span><h2 class="section-heading">One scan. Inspectable evidence.</h2></div>
+          <p class="section-copy reveal-up">Vellox turns supported performance and database patterns into deterministic findings your team can inspect, baseline, and gate.</p>
         </div>
         <div class="scanner-shell reveal-up" id="scanner-shell">
-          <div class="scanner-topbar"><div class="window-controls" aria-hidden="true"><span></span><span></span><span></span></div><span class="scanner-file">orders.service.ts — Vellox Scanner</span><button class="scanner-run" id="scanner-run" type="button">Run scan</button></div>
+          <div class="scanner-topbar"><div class="window-controls" aria-hidden="true"><span></span><span></span><span></span></div><span class="scanner-file">REAL RULES / EXAMPLE SOURCE — orders.service.ts</span><button class="scanner-run" id="scanner-run" type="button">Run scan</button></div>
           <div class="scanner-grid">
             <div class="code-pane">
               <div class="code-heading"><span>Source</span><span>TypeScript</span></div>
@@ -590,13 +590,11 @@
               <div class="scan-cursor" aria-hidden="true"></div>
             </div>
             <div class="diagnostic-pane" aria-live="polite">
-              <div class="diagnostic-head"><div><span>Diagnosis complete</span><strong>3 actionable findings</strong></div><span class="severity">Critical</span></div>
+              <div class="diagnostic-head"><div><span>Scan complete</span><strong>1 evidence-backed finding</strong></div><span class="severity">High</span></div>
               <div class="finding-list">
-                <article class="finding"><span class="finding-index">01</span><div><strong>Sequential N+1 query loop</strong><p>84 child queries emitted per request on /api/orders</p></div><span class="finding-impact">+412 ms</span></article>
-                <article class="finding"><span class="finding-index">02</span><div><strong>Missing relation index</strong><p>Item.orderId triggers a sequential scan over 1.8M rows</p></div><span class="finding-impact">$1,284/mo</span></article>
-                <article class="finding"><span class="finding-index">03</span><div><strong>Unbounded result set</strong><p>No pagination guard found for order history</p></div><span class="finding-impact">2.4× memory</span></article>
+                <article class="finding"><span class="finding-index">01</span><div><strong>Sequential async query loop</strong><p>Evidence captured at orders.service.ts:7</p></div><span class="finding-impact">HIGH</span></article>
               </div>
-              <div class="fix-preview"><span class="fix-preview-label">Generated safe fix</span><code><span class="fix-plus">+</span> include: { items: true }<br /><span class="fix-plus">+</span> @@index([orderId])<br /><span class="fix-plus">+</span> CREATE INDEX CONCURRENTLY IF NOT EXISTS</code></div>
+              <div class="fix-preview"><span class="fix-preview-label">Scanner recommendation</span><code>Batch the operation or use bounded parallelism.<br />Review before adding // @vellox-ignore.</code></div>
             </div>
           </div>
         </div>
@@ -605,39 +603,35 @@
 
     <section class="section story-section" id="workflow">
       <div class="container">
-        <div class="story-header"><div class="reveal-up"><span class="kicker">How Vellox thinks</span><h2 class="section-heading">From symptom to savings.</h2></div><p class="section-copy reveal-up">Not another wall of metrics. A connected decision trail that engineering and finance can act on together.</p></div>
-        <div class="mobile-stage-nav" aria-label="Workflow stages"><button class="is-active" data-stage-button="0" type="button">01 Trace</button><button data-stage-button="1" type="button">02 Diagnose</button><button data-stage-button="2" type="button">03 Repair</button><button data-stage-button="3" type="button">04 Prove</button></div>
+        <div class="story-header"><div class="reveal-up"><span class="kicker">How Vellox works</span><h2 class="section-heading">From source to CI evidence.</h2></div><p class="section-copy reveal-up">One local pipeline from deterministic scan to a machine-readable gate.</p></div>
+        <div class="mobile-stage-nav" aria-label="Workflow stages"><button class="is-active" data-stage-button="0" type="button">01 Scan</button><button data-stage-button="1" type="button">02 Evidence</button><button data-stage-button="2" type="button">03 Review</button><button data-stage-button="3" type="button">04 Gate</button></div>
         <div class="story-layout">
           <div class="story-steps">
-            <article class="story-step is-active" data-stage="0"><span class="story-number">01 / TRACE</span><h3>See the request as one connected system.</h3><p>Vellox connects the route, database call, latency, and infrastructure cost with bounded, low-overhead telemetry.</p><div class="story-tags"><span>AsyncLocalStorage</span><span>OTel spans</span><span>Route normalization</span></div></article>
-            <article class="story-step" data-stage="1"><span class="story-number">02 / DIAGNOSE</span><h3>Find the cause behind the spike.</h3><p>Correlate code anti-patterns, query plans, missing indexes, pool pressure, and repeated calls into one evidence trail.</p><div class="story-tags"><span>N+1</span><span>COLLSCAN</span><span>Seq Scan</span><span>Cache miss</span></div></article>
-            <article class="story-step" data-stage="2"><span class="story-number">03 / REPAIR</span><h3>Generate the fix. Keep humans in control.</h3><p>Get exact ORM diffs, concurrent SQL migrations, and refactoring guidance. Nothing runs against production automatically.</p><div class="story-tags"><span>Reviewable diff</span><span>Zero-lock DDL</span><span>Advisory first</span></div></article>
-            <article class="story-step" data-stage="3"><span class="story-number">04 / PROVE</span><h3>Translate technical debt into business impact.</h3><p>Put a dollar value on wasted IOPS, CPU, memory, and engineer time — then measure the delta after the fix.</p><div class="story-tags"><span>Cost engine</span><span>Before / after</span><span>CI budgets</span></div></article>
+            <article class="story-step is-active" data-stage="0"><span class="story-number">01 / SCAN</span><h3>Inspect the project where it already lives.</h3><p>Vellox reads supported source and schema files locally. It does not execute code, connect to a database, or upload the project.</p><div class="story-tags"><span>Local files</span><span>Zero execution</span><span>Deterministic rules</span></div></article>
+            <article class="story-step" data-stage="1"><span class="story-number">02 / EVIDENCE</span><h3>Make every finding auditable.</h3><p>Each result carries a rule, severity, exact location, redacted evidence, recommendation, and stable fingerprint.</p><div class="story-tags"><span>File + line</span><span>Fingerprint</span><span>JSON / SARIF</span></div></article>
+            <article class="story-step" data-stage="2"><span class="story-number">03 / REVIEW</span><h3>Suggest the action. Keep humans in control.</h3><p>Code findings receive guidance; eligible schema findings can produce dialect-aware SQL suggestions. Nothing runs automatically.</p><div class="story-tags"><span>Human review</span><span>Dialect aware</span><span>Advisory only</span></div></article>
+            <article class="story-step" data-stage="3"><span class="story-number">04 / GATE</span><h3>Block only what your policy forbids.</h3><p>Budgets and baselines let CI fail on new critical, high-severity, or secret findings without inventing a financial score.</p><div class="story-tags"><span>Budgets</span><span>Baseline</span><span>Exit code</span></div></article>
           </div>
           <div class="story-stage-wrap">
             <div class="story-stage">
-              <div class="stage-top"><span>Vellox / request intelligence</span><div class="stage-dots"><i></i><i></i><i></i></div></div>
+              <div class="stage-top"><span>Vellox / local scan pipeline</span><div class="stage-dots"><i></i><i></i><i></i></div></div>
               <div class="stage-panel is-active" data-stage-panel="0">
-                <span class="stage-label">Distributed trace / req_7ea91</span><h4 class="stage-title">GET /api/v1/orders/:id</h4>
-                <div class="waterfall"><div class="trace-row"><span>HTTP</span><div class="trace-bar"><i style="--w:100%"></i></div><em>448ms</em></div><div class="trace-row"><span>AUTH</span><div class="trace-bar"><i style="--w:14%"></i></div><em>12ms</em></div><div class="trace-row"><span>ORDERS</span><div class="trace-bar"><i style="--w:82%"></i></div><em>367ms</em></div><div class="trace-row"><span>ITEM ×84</span><div class="trace-bar"><i style="--w:72%"></i></div><em>324ms</em></div><div class="trace-row"><span>SERIALIZE</span><div class="trace-bar"><i style="--w:9%"></i></div><em>8ms</em></div></div>
-                <div class="trace-summary"><div><strong>86</strong><span>DB calls</span></div><div><strong>1.8M</strong><span>Rows scanned</span></div><div><strong>42KB</strong><span>Trace memory</span></div></div>
+                <span class="stage-label">Actual CLI contract / example fixture</span><h4 class="stage-title">npx vellox scan .</h4>
+                <div class="waterfall"><div class="trace-row"><span>INPUT</span><div class="trace-bar"><i style="--w:100%"></i></div><em>local</em></div><div class="trace-row"><span>CODE</span><div class="trace-bar"><i style="--w:78%"></i></div><em>1 file</em></div><div class="trace-row"><span>RULE</span><div class="trace-bar"><i style="--w:58%"></i></div><em>1 match</em></div><div class="trace-row"><span>REPORT</span><div class="trace-bar"><i style="--w:42%"></i></div><em>JSON</em></div></div>
+                <div class="trace-summary"><div><strong>0</strong><span>Code executed</span></div><div><strong>0</strong><span>DB connections</span></div><div><strong>1</strong><span>Finding</span></div></div>
               </div>
               <div class="stage-panel" data-stage-panel="1">
-                <span class="stage-label">Root-cause correlation</span><h4 class="stage-title">One bottleneck. Four signals.</h4>
-                <div class="root-map"><span class="root-line l1"></span><span class="root-line l2"></span><span class="root-line l3"></span><span class="root-line l4"></span><span class="root-node n1">route latency<br />p95 +412ms</span><span class="root-node n2">query plan<br />Seq Scan</span><span class="root-node primary"><strong>ROOT CAUSE</strong>missing orderId index<br />inside sequential loop</span><span class="root-node n3">cloud cost<br />IOPS +$1,284</span><span class="root-node n4">source line<br />orders.ts:47</span></div>
+                <span class="stage-label">Evidence contract</span><h4 class="stage-title">One finding. Every claim traceable.</h4>
+                <div class="root-map"><span class="root-line l1"></span><span class="root-line l2"></span><span class="root-line l3"></span><span class="root-line l4"></span><span class="root-node n1">severity<br />HIGH</span><span class="root-node n2">rule<br />sequential async</span><span class="root-node primary"><strong>EVIDENCE</strong>await prisma.item.findMany<br />inside loop</span><span class="root-node n3">fingerprint<br />stable SHA-256</span><span class="root-node n4">source line<br />orders.ts:7</span></div>
               </div>
               <div class="stage-panel" data-stage-panel="2">
-                <span class="stage-label">Human-reviewable patch</span><h4 class="stage-title">A safe fix, not a blind mutation.</h4>
-                <div class="diff-window"><div class="diff-col"><span>orders.service.ts</span><code><span class="deleted">- for (const order of orders) {</span>
-<span class="deleted">-   order.items = await</span>
-<span class="deleted">-     prisma.item.findMany(...)</span>
-<span class="deleted">- }</span></code></div><div class="diff-col"><span>Suggested patch</span><code><span class="added">+ prisma.order.findMany({</span>
-<span class="added">+   include: { items: true },</span>
-<span class="added">+   take: 50</span>
-<span class="added">+ })</span></code></div></div>
-                <div class="fix-preview"><span class="fix-preview-label">migrations/vellox_optimizations.sql</span><code>CREATE INDEX CONCURRENTLY IF NOT EXISTS<br />idx_item_order_id ON "Item" ("orderId");</code></div>
+                <span class="stage-label">Human-reviewable guidance</span><h4 class="stage-title">A concrete next step, not fabricated code.</h4>
+                <div class="diff-window"><div class="diff-col"><span>Observed</span><code><span class="deleted">await database work</span>
+<span class="deleted">inside an iteration</span></code></div><div class="diff-col"><span>Recommendation</span><code><span class="added">Batch the operation</span>
+<span class="added">or use bounded parallelism</span></code></div></div>
+                <div class="fix-preview"><span class="fix-preview-label">Safety boundary</span><code>Vellox does not edit this file.<br />The engineer chooses the implementation.</code></div>
               </div>
-              <div class="stage-panel" data-stage-panel="3"><span class="stage-label">Validated impact model</span><h4 class="stage-title">The number your cloud bill feels.</h4><div class="impact-card"><div><strong>$1,284</strong><span>projected monthly savings</span><div class="impact-pills"><i>−84 queries</i><i>−71% latency</i><i>−63% IOPS</i></div></div></div></div>
+              <div class="stage-panel" data-stage-panel="3"><span class="stage-label">Policy gate</span><h4 class="stage-title">Real exit code. Explicit threshold.</h4><div class="impact-card"><div><strong>EXIT 1</strong><span>1 high finding × maxHigh 0</span><div class="impact-pills"><i>Baseline aware</i><i>Secret gate</i><i>No money score</i></div></div></div></div>
             </div>
           </div>
         </div>
@@ -648,20 +642,20 @@
       <div class="container">
         <div class="capability-head reveal-up"><div><span class="kicker">Built for the real stack</span><h2 class="section-heading">Deep enough for engineers. Clear enough for everyone.</h2></div></div>
         <div class="capability-grid">
-          <article class="capability-card large card-reveal"><span class="card-index">01 / DATABASE INTELLIGENCE</span><div class="card-visual database-stack" aria-hidden="true"><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i></div><h3>Understand what the database is actually doing.</h3><p>Read query plans, surface full scans, tune pools, detect bloat, and fingerprint repeated queries across SQL and NoSQL.</p></article>
-          <article class="capability-card tall card-reveal"><span class="card-index">02 / FAILURE INDEPENDENCE</span><div class="card-visual shield-visual" aria-hidden="true"></div><h3>Your app stays up. Even if Vellox doesn’t.</h3><p>Bounded queues, backpressure, sampling, and failure isolation keep the host application protected.</p></article>
-          <article class="capability-card third mini-card card-reveal"><span class="card-index">03 / COST ENGINE</span><h3>Put a price on waste.</h3><p>Model the cost of unnecessary CPU, memory, storage, and database I/O.</p><div class="mini-chart" aria-hidden="true"><span style="--h:28%"></span><span style="--h:42%"></span><span style="--h:38%"></span><span style="--h:61%"></span><span style="--h:48%"></span><span style="--h:70%"></span><span style="--h:82%"></span><span style="--h:100%"></span></div></article>
-          <article class="capability-card third mini-card card-reveal"><span class="card-index">04 / POLYGLOT</span><h3>Meet your stack where it is.</h3><p>Native agents and adapters for modern services, ORMs, and data stores.</p><div class="orm-list"><span>Node.js</span><span>Python</span><span>Prisma</span><span>FastAPI</span><span>NestJS</span><span>OTel</span></div></article>
-          <article class="capability-card third mini-card card-reveal"><span class="card-index">05 / CI GUARDRAILS</span><h3>Stop waste before deploy.</h3><p>Fail pull requests when new code exceeds performance or infrastructure budgets.</p><div class="orm-list"><span>PR check</span><span>DDL review</span><span>Secret scan</span><span>Budget gate</span></div></article>
+          <article class="capability-card large card-reveal"><span class="card-index">01 / SOURCE INTELLIGENCE</span><div class="card-visual database-stack" aria-hidden="true"><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i></div><h3>See supported risks where they are written.</h3><p>Inspect async loops, raw SQL, ORM schemas, migrations, secrets, and PostgreSQL JSON plans. Source findings carry exact locations.</p></article>
+          <article class="capability-card tall card-reveal"><span class="card-index">02 / LOCAL BY DESIGN</span><div class="card-visual shield-visual" aria-hidden="true"></div><h3>Your source stays on your machine.</h3><p>The CLI reads files and writes a local report. No daemon, account, database connection, container, or code execution.</p></article>
+          <article class="capability-card third mini-card card-reveal"><span class="card-index">03 / EVIDENCE CONTRACT</span><h3>Use the same truth everywhere.</h3><p>Pretty output, JSON, Markdown, SARIF, baselines, and CI all consume the same findings.</p><div class="mini-chart" aria-hidden="true"><span style="--h:28%"></span><span style="--h:42%"></span><span style="--h:38%"></span><span style="--h:61%"></span><span style="--h:48%"></span><span style="--h:70%"></span><span style="--h:82%"></span><span style="--h:100%"></span></div></article>
+          <article class="capability-card third mini-card card-reveal"><span class="card-index">04 / MULTI-SOURCE</span><h3>Scan the files that shape performance.</h3><p>Rules for modern application code, SQL, Prisma, Drizzle, and environment/configuration files.</p><div class="orm-list"><span>TypeScript</span><span>JavaScript</span><span>Python</span><span>SQL</span><span>Prisma</span><span>Drizzle</span></div></article>
+          <article class="capability-card third mini-card card-reveal"><span class="card-index">05 / CI GUARDRAILS</span><h3>Stop new risks before deploy.</h3><p>Fail pull requests when new findings exceed configured severity, total, or secret budgets.</p><div class="orm-list"><span>PR check</span><span>DDL review</span><span>Secret scan</span><span>Budget gate</span></div></article>
         </div>
       </div>
     </section>
 
     <section class="section proof-section" id="benchmarks">
       <div class="container">
-        <div class="proof-top"><div class="reveal-up"><span class="kicker">Measured, not marketed</span><h2 class="section-heading">Small footprint. Serious signal.</h2></div><p class="section-copy reveal-up">Vellox is built around hard memory guardrails, failure isolation, and empirical overhead benchmarks.</p></div>
-        <div class="proof-grid reveal-up"><article class="proof-stat"><span>Latency delta</span><strong>+0.00ms</strong><p>Observed P95 overhead in the reference benchmark.</p></article><article class="proof-stat"><span>Memory delta</span><strong>+11.18MB</strong><p>Measured process RSS within the 30MB guardrail.</p></article><article class="proof-stat"><span>Test status</span><strong>64 / 64</strong><p>Automated project tests verified passing.</p></article><article class="proof-stat"><span>Failure mode</span><strong>Fail open</strong><p>The monitored application remains independent.</p></article></div>
-        <div class="proof-note"><span>Reference environment: 12-core Linux x64 / 50 concurrent connections</span><span>Methodology available on GitHub ↗</span></div>
+        <div class="proof-top"><div class="reveal-up"><span class="kicker">Measured, not marketed</span><h2 class="section-heading">Evidence in. Evidence out.</h2></div><p class="section-copy reveal-up">The scanner, reports, migrations, CI gate, and SARIF output now share one inspectable finding contract.</p></div>
+        <div class="proof-grid reveal-up"><article class="proof-stat"><span>Test suite</span><strong>78</strong><p>TypeScript and Python tests, including real CLI workflow fixtures.</p></article><article class="proof-stat"><span>Output contract</span><strong>JSON</strong><p>Stable fingerprints make baselines and diffs reviewable.</p></article><article class="proof-stat"><span>CI standard</span><strong>SARIF</strong><p>Findings map back to the exact source location.</p></article><article class="proof-stat"><span>Local runtime</span><strong>Node</strong><p>No Docker, Kubernetes, daemon, database, or account required.</p></article></div>
+        <div class="proof-note"><span>Run pnpm test and pnpm benchmark on your own hardware</span><span>Methodology available on GitHub ↗</span></div>
       </div>
     </section>
 
@@ -673,10 +667,10 @@
   <footer class="footer">
     <div class="container">
       <div class="footer-top">
-        <div class="footer-intro"><a class="brand" href="#top"><span class="brand-mark"><img src="public/logo-signal.png" alt="" /></span><span class="brand-word">VELLOX</span></a><p>Performance, database, and infrastructure waste intelligence — built by Guilherme Men.</p></div>
+        <div class="footer-intro"><a class="brand" href="#top"><span class="brand-mark"><img src="public/logo-signal-512.png" alt="" /></span><span class="brand-word">VELLOX</span></a><p>Performance, database, and infrastructure waste intelligence — built by Guilherme Men.</p></div>
         <div class="footer-col"><strong>Product</strong><a href="#product">Scanner</a><a href="#workflow">Workflow</a><a href="#benchmarks">Benchmarks</a></div>
-        <div class="footer-col"><strong>Developers</strong><a href="https://github.com/Guimenn/vellox" target="_blank" rel="noreferrer">GitHub ↗</a><a href="https://www.npmjs.com/package/vellox" target="_blank" rel="noreferrer">NPM ↗</a><a href="https://github.com/Guimenn/vellox#-quickstart-zero-install" target="_blank" rel="noreferrer">Docs ↗</a></div>
-        <div class="footer-col"><strong>Legal</strong><a href="https://github.com/Guimenn/vellox/blob/main/LICENSE" target="_blank" rel="noreferrer">License ↗</a><a href="https://github.com/Guimenn" target="_blank" rel="noreferrer">Creator ↗</a></div>
+        <div class="footer-col"><strong>Developers</strong><a href="https://github.com/Guimenn/Vellox" target="_blank" rel="noreferrer">GitHub ↗</a><a href="https://www.npmjs.com/package/vellox" target="_blank" rel="noreferrer">NPM ↗</a><a href="https://github.com/Guimenn/Vellox#quick-start" target="_blank" rel="noreferrer">Docs ↗</a></div>
+        <div class="footer-col"><strong>Legal</strong><a href="https://github.com/Guimenn/Vellox/blob/main/LICENSE" target="_blank" rel="noreferrer">License ↗</a><a href="https://github.com/Guimenn" target="_blank" rel="noreferrer">Creator ↗</a></div>
       </div>
       <div class="footer-word" aria-hidden="true">
         <svg viewBox="0 0 1000 190" role="presentation">
@@ -702,7 +696,7 @@
           </defs>
           <text x="0" y="168" font-size="215" textLength="1000" lengthAdjust="spacingAndGlyphs" mask="url(#footer-base-mask)">VELLOX</text>
           <g clip-path="url(#footer-v-clip)" mask="url(#footer-reveal-mask)">
-            <image class="footer-liquid-logo" href="public/logo-signal.png" x="3" y="0" width="176" height="188" preserveAspectRatio="xMidYMid meet" />
+            <image class="footer-liquid-logo" href="public/logo-signal-512.png" x="3" y="0" width="176" height="188" preserveAspectRatio="xMidYMid meet" />
           </g>
         </svg>
       </div>

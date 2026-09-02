@@ -1,16 +1,16 @@
 {
-  "name": "@infrawaste/benchmark-agent-overhead",
-  "version": "0.1.0",
+  "name": "@vellox/benchmark-agent-overhead",
+  "version": "0.2.0",
   "private": true,
-  "description": "Empirical Agent Overhead Benchmark Suite (Without InfraWaste vs With InfraWaste)",
+  "description": "Empirical Agent Overhead Benchmark Suite (Without Vellox vs With Vellox)",
   "type": "module",
   "scripts": {
     "build": "tsup src/runner.ts --format esm --clean",
     "start": "node dist/runner.js"
   },
   "dependencies": {
-    "@infrawaste/core": "workspace:*",
-    "@infrawaste/agent-node": "workspace:*",
+    "@vellox/core": "workspace:*",
+    "@vellox/agent-node": "workspace:*",
     "autocannon": "^8.0.0",
     "express": "^4.21.2"
   },

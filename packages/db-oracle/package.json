@@ -1,7 +1,7 @@
 {
-  "name": "@infrawaste/db-oracle",
-  "version": "0.1.0",
-  "description": "Oracle Database performance & waste telemetry adapter for InfraWaste",
+  "name": "@vellox/db-oracle",
+  "version": "0.2.0",
+  "description": "Oracle Database performance & waste telemetry adapter for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -13,8 +13,8 @@
     }
   },
   "dependencies": {
-    "@infrawaste/core": "workspace:*",
-    "@infrawaste/db-core": "workspace:*"
+    "@vellox/core": "workspace:*",
+    "@vellox/db-core": "workspace:*"
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",

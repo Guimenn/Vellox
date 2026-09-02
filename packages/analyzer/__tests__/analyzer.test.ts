@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { WasteAnalyzerEngine } from '../src/engine.js';
-import { DatabaseTelemetry, HttpAggregateTelemetry } from '@infrawaste/core';
+import { DatabaseTelemetry, HttpAggregateTelemetry } from '@vellox/core';
 
 describe('WasteAnalyzerEngine', () => {
   let engine: WasteAnalyzerEngine;
@@ -49,7 +49,7 @@ describe('WasteAnalyzerEngine', () => {
     expect(nplus1).toBeDefined();
     expect(nplus1?.service).toBe('checkout-api');
     expect(nplus1?.confidence).toBeGreaterThanOrEqual(90);
-    expect(nplus1?.impact.estimatedMonthlyCost).toBeGreaterThan(0);
+    expect(nplus1?.impact.estimatedMonthlyCost).toBeNull();
     expect(nplus1?.recommendation.suggestedSolution).toContain('eager relations');
   });
 

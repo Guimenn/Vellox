@@ -1,7 +1,7 @@
 import http from 'node:http';
 import autocannon from 'autocannon';
 import express from 'express';
-import { InfraWasteAgent, infrawasteExpressMiddleware } from '@infrawaste/agent-node';
+import { VelloxAgent, velloxExpressMiddleware } from '@vellox/agent-node';
 
 interface BenchmarkResult {
   title: string;
@@ -20,13 +20,13 @@ function createExpressApp(enableAgent: boolean): express.Express {
   const app = express();
 
   if (enableAgent) {
-    const agent = InfraWasteAgent.init({
+    const agent = VelloxAgent.init({
       serviceName: 'benchmark-api',
       environment: 'benchmark',
       flushIntervalMs: 5000,
       maxMemoryBytes: 30 * 1024 * 1024
     });
-    app.use(infrawasteExpressMiddleware(agent));
+    app.use(velloxExpressMiddleware(agent));
   }
 
   // Realistic endpoint mix
@@ -75,7 +75,7 @@ function runAutocannon(url: string, duration: number, connections: number, pipel
 
 async function benchmarkServer(title: string, enableAgent: boolean, port: number): Promise<BenchmarkResult> {
   if (enableAgent) {
-    InfraWasteAgent.resetInstance();
+    VelloxAgent.resetInstance();
   }
 
   const app = createExpressApp(enableAgent);
@@ -102,7 +102,7 @@ async function benchmarkServer(title: string, enableAgent: boolean, port: number
   await new Promise<void>((resolve) => server.close(() => resolve()));
 
   if (enableAgent) {
-    InfraWasteAgent.resetInstance();
+    VelloxAgent.resetInstance();
   }
 
   const latencyMedian = result.latency.p50 || result.latency.average || 0;
@@ -126,19 +126,20 @@ async function benchmarkServer(title: string, enableAgent: boolean, port: number
 
 async function main() {
   console.log('========================================================================');
-  console.log('  INFRAWASTE - EMPIRICAL AGENT OVERHEAD BENCHMARK');
+  console.log('  VELLOX - LOCAL AGENT OVERHEAD BENCHMARK');
   console.log('========================================================================');
-  console.log('Objective: Measure the exact cost of monitoring an Express application.');
-  console.log('Target SLA: Latency Overhead < 1.0ms | Memory < 50MB | CPU < 1.0% | Zero Blocking');
+  console.log('Objective: Compare baseline and instrumented Express runs on this machine.');
+  console.log('Thresholds: P50 delta <= 1.0ms | P95 delta < 2.0ms | RSS delta < 50MB');
+  console.log('Results are environment-specific; rerun before making a performance claim.');
 
   // 1. Baseline Run
-  const baseline = await benchmarkServer('WITHOUT INFRAWASTE (Baseline)', false, 4101);
+  const baseline = await benchmarkServer('WITHOUT VELLOX (Baseline)', false, 4101);
 
   // Cool down
   await new Promise((resolve) => setTimeout(resolve, 1500));
 
   // 2. Instrumented Run
-  const instrumented = await benchmarkServer('WITH INFRAWASTE (Instrumented)', true, 4102);
+  const instrumented = await benchmarkServer('WITH VELLOX (Instrumented)', true, 4102);
 
   // Calculate Deltas
   const deltaLatencyP50 = Number((instrumented.latencyMedianMs - baseline.latencyMedianMs).toFixed(3));
@@ -154,44 +155,44 @@ async function main() {
   console.table([
     {
       Metric: 'Total Requests',
-      'WITHOUT InfraWaste': baseline.requestsTotal.toLocaleString(),
-      'WITH InfraWaste': instrumented.requestsTotal.toLocaleString(),
+      'WITHOUT Vellox': baseline.requestsTotal.toLocaleString(),
+      'WITH Vellox': instrumented.requestsTotal.toLocaleString(),
       Delta: `${instrumented.requestsTotal - baseline.requestsTotal} reqs`
     },
     {
       Metric: 'Throughput (req/sec)',
-      'WITHOUT InfraWaste': `${baseline.requestsPerSec.toLocaleString()} req/s`,
-      'WITH InfraWaste': `${instrumented.requestsPerSec.toLocaleString()} req/s`,
+      'WITHOUT Vellox': `${baseline.requestsPerSec.toLocaleString()} req/s`,
+      'WITH Vellox': `${instrumented.requestsPerSec.toLocaleString()} req/s`,
       Delta: `${throughputRatio}% of baseline`
     },
     {
       Metric: 'P50 Latency (Median)',
-      'WITHOUT InfraWaste': `${baseline.latencyMedianMs} ms`,
-      'WITH InfraWaste': `${instrumented.latencyMedianMs} ms`,
+      'WITHOUT Vellox': `${baseline.latencyMedianMs} ms`,
+      'WITH Vellox': `${instrumented.latencyMedianMs} ms`,
       Delta: `${deltaLatencyP50 >= 0 ? '+' : ''}${deltaLatencyP50} ms`
     },
     {
       Metric: 'P95 Latency',
-      'WITHOUT InfraWaste': `${baseline.latencyP95Ms} ms`,
-      'WITH InfraWaste': `${instrumented.latencyP95Ms} ms`,
+      'WITHOUT Vellox': `${baseline.latencyP95Ms} ms`,
+      'WITH Vellox': `${instrumented.latencyP95Ms} ms`,
       Delta: `${deltaLatencyP95 >= 0 ? '+' : ''}${deltaLatencyP95} ms`
     },
     {
       Metric: 'P99 Latency',
-      'WITHOUT InfraWaste': `${baseline.latencyP99Ms} ms`,
-      'WITH InfraWaste': `${instrumented.latencyP99Ms} ms`,
+      'WITHOUT Vellox': `${baseline.latencyP99Ms} ms`,
+      'WITH Vellox': `${instrumented.latencyP99Ms} ms`,
       Delta: `${deltaLatencyP99 >= 0 ? '+' : ''}${deltaLatencyP99} ms`
     },
     {
       Metric: 'Max Latency',
-      'WITHOUT InfraWaste': `${baseline.latencyMaxMs} ms`,
-      'WITH InfraWaste': `${instrumented.latencyMaxMs} ms`,
+      'WITHOUT Vellox': `${baseline.latencyMaxMs} ms`,
+      'WITH Vellox': `${instrumented.latencyMaxMs} ms`,
       Delta: `${(instrumented.latencyMaxMs - baseline.latencyMaxMs).toFixed(2)} ms`
     },
     {
       Metric: 'Process RSS Memory',
-      'WITHOUT InfraWaste': `${baseline.rssMb} MB`,
-      'WITH InfraWaste': `${instrumented.rssMb} MB`,
+      'WITHOUT Vellox': `${baseline.rssMb} MB`,
+      'WITH Vellox': `${instrumented.rssMb} MB`,
       Delta: `${deltaRssMb >= 0 ? '+' : ''}${deltaRssMb} MB`
     }
   ]);
@@ -207,13 +208,12 @@ async function main() {
   console.log(`  Median Latency Overhead (<= 1.0 ms):  ${p50Pass ? '✅ PASS' : '❌ FAIL'} (${deltaLatencyP50} ms)`);
   console.log(`  P95 Latency Overhead    (< 2.0 ms):  ${p95Pass ? '✅ PASS' : '❌ FAIL'} (${deltaLatencyP95} ms)`);
   console.log(`  Memory Footprint Delta  (< 50 MB):   ${memPass ? '✅ PASS' : '❌ FAIL'} (${deltaRssMb} MB)`);
-  console.log(`  Blocking Operations:                 ✅ 0 (Zero blocking in request path)`);
   console.log('------------------------------------------------------------------------\n');
 
-  if (p50Pass && memPass) {
-    console.log('🏆 VERDICT: The InfraWaste Agent meets all high-scale low-overhead SLAs!');
+  if (p50Pass && p95Pass && memPass) {
+    console.log('✅ VERDICT: This local run met the configured thresholds.');
   } else {
-    console.warn('⚠️  VERDICT: Overhead exceeded target SLAs.');
+    console.warn('⚠️  VERDICT: This local run exceeded one or more configured thresholds.');
   }
 }
 

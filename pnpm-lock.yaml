@@ -35,16 +35,13 @@ importers:
 
   apps/collector:
     dependencies:
-      '@infrawaste/analyzer':
+      '@vellox/analyzer':
         specifier: workspace:*
         version: link:../../packages/analyzer
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@infrawaste/cost-engine':
-        specifier: workspace:*
-        version: link:../../packages/cost-engine
-      '@infrawaste/otel-bridge':
+      '@vellox/otel-bridge':
         specifier: workspace:*
         version: link:../../packages/otel-bridge
       express:
@@ -75,10 +72,10 @@ importers:
 
   benchmarks/agent-overhead:
     dependencies:
-      '@infrawaste/agent-node':
+      '@vellox/agent-node':
         specifier: workspace:*
         version: link:../../packages/agent-node
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../../packages/core
       autocannon:
@@ -106,28 +103,25 @@ importers:
 
   examples/bad-api:
     dependencies:
-      '@infrawaste/agent-node':
+      '@vellox/agent-node':
         specifier: workspace:*
         version: link:../../packages/agent-node
-      '@infrawaste/analyzer':
+      '@vellox/analyzer':
         specifier: workspace:*
         version: link:../../packages/analyzer
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@infrawaste/cost-engine':
-        specifier: workspace:*
-        version: link:../../packages/cost-engine
-      '@infrawaste/db-core':
+      '@vellox/db-core':
         specifier: workspace:*
         version: link:../../packages/db-core
-      '@infrawaste/db-mongodb':
+      '@vellox/db-mongodb':
         specifier: workspace:*
         version: link:../../packages/db-mongodb
-      '@infrawaste/db-postgres':
+      '@vellox/db-postgres':
         specifier: workspace:*
         version: link:../../packages/db-postgres
-      '@infrawaste/db-redis':
+      '@vellox/db-redis':
         specifier: workspace:*
         version: link:../../packages/db-redis
       express:
@@ -146,10 +140,10 @@ importers:
 
   packages/agent-node:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
-      '@infrawaste/db-core':
+      '@vellox/db-core':
         specifier: workspace:*
         version: link:../db-core
     devDependencies:
@@ -177,12 +171,9 @@ importers:
 
   packages/analyzer:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
-      '@infrawaste/cost-engine':
-        specifier: workspace:*
-        version: link:../cost-engine
     devDependencies:
       tsup:
         specifier: ^8.3.6
@@ -217,7 +208,7 @@ importers:
 
   packages/cost-engine:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -233,7 +224,7 @@ importers:
 
   packages/db-core:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -249,10 +240,10 @@ importers:
 
   packages/db-mariadb:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
-      '@infrawaste/db-core':
+      '@vellox/db-core':
         specifier: workspace:*
         version: link:../db-core
     devDependencies:
@@ -268,10 +259,10 @@ importers:
 
   packages/db-mongodb:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
-      '@infrawaste/db-core':
+      '@vellox/db-core':
         specifier: workspace:*
         version: link:../db-core
     devDependencies:
@@ -287,10 +278,10 @@ importers:
 
   packages/db-mysql:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
-      '@infrawaste/db-core':
+      '@vellox/db-core':
         specifier: workspace:*
         version: link:../db-core
     devDependencies:
@@ -306,10 +297,10 @@ importers:
 
   packages/db-oracle:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
-      '@infrawaste/db-core':
+      '@vellox/db-core':
         specifier: workspace:*
         version: link:../db-core
     devDependencies:
@@ -325,10 +316,10 @@ importers:
 
   packages/db-postgres:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
-      '@infrawaste/db-core':
+      '@vellox/db-core':
         specifier: workspace:*
         version: link:../db-core
     devDependencies:
@@ -344,10 +335,10 @@ importers:
 
   packages/db-redis:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
-      '@infrawaste/db-core':
+      '@vellox/db-core':
         specifier: workspace:*
         version: link:../db-core
     devDependencies:
@@ -363,7 +354,7 @@ importers:
 
   packages/explain-analyzer:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -379,10 +370,10 @@ importers:
 
   packages/otel-bridge:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
-      '@infrawaste/db-core':
+      '@vellox/db-core':
         specifier: workspace:*
         version: link:../db-core
     devDependencies:
@@ -398,7 +389,7 @@ importers:
 
   packages/schema-advisor:
     dependencies:
-      '@infrawaste/core':
+      '@vellox/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:

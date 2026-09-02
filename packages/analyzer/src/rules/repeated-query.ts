@@ -1,11 +1,10 @@
-import { DatabaseTelemetry, Finding } from '@infrawaste/core';
-import { CostEstimator } from '@infrawaste/cost-engine';
+import { DatabaseTelemetry, Finding } from '@vellox/core';
 
 export class RepeatedQueryRule {
   /**
    * Detects queries with excessive execution frequencies that constitute database waste.
    */
-  public static analyze(telemetry: DatabaseTelemetry, costEstimator: CostEstimator): Finding | null {
+  public static analyze(telemetry: DatabaseTelemetry): Finding | null {
     if (telemetry.executionCount < 50) return null;
 
     // Waste metric: high total duration driven by execution volume
@@ -16,8 +15,6 @@ export class RepeatedQueryRule {
 
     // Confidence: 90% base, up to 98% based on sample size
     const confidence = Math.min(98, Math.round(90 + Math.log10(telemetry.executionCount)));
-    const estimatedCapacityWaste = Math.min(40, Math.round((telemetry.totalDurationMs / 100000) * 100) || 15);
-    const savings = costEstimator.estimateDatabaseWasteSavings(estimatedCapacityWaste);
 
     return {
       id: `waste_rep_${telemetry.fingerprint}_${telemetry.timestamp}`,
@@ -28,18 +25,14 @@ export class RepeatedQueryRule {
       confidence,
       severity: telemetry.executionCount > 5000 ? 'CRITICAL' : 'HIGH',
       impact: {
-        databaseLoad: -estimatedCapacityWaste,
-        latencyPercent: -15,
-        estimatedMonthlyCost: savings.estimatedPotentialSavingsUsd
+        estimatedMonthlyCost: null
       },
       recommendation: {
         action: 'Introduce query batching, local memoization, or Redis caching',
         explanation: `Query executed ${telemetry.executionCount.toLocaleString()} times consuming ${telemetry.totalDurationMs.toLocaleString()}ms total DB time.`,
         suggestedSolution: 'Batch single-item lookups into IN (?) or DataLoader, or place short-lived cache (TTL ~5-60s).',
         estimatedImpact: {
-          databaseLoad: -estimatedCapacityWaste,
-          latencyPercent: -15,
-          estimatedMonthlyCost: savings.estimatedPotentialSavingsUsd
+          estimatedMonthlyCost: null
         },
         evidence: {
           executionCount: telemetry.executionCount,

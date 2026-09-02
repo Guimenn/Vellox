@@ -1,4 +1,4 @@
-import { BaseDatabaseAdapter } from '@infrawaste/db-core';
+import { BaseDatabaseAdapter } from '@vellox/db-core';
 import { TraceContextManager } from '../context.js';
 
 export interface PrismaQueryEvent {

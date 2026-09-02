@@ -1,19 +1,25 @@
 {
   "name": "vellox-workspace",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
-  "description": "Vellox - High-Scale Performance, Database & Infrastructure Waste Intelligence Engine",
+  "description": "Vellox - local evidence-first scanner for code, SQL, ORM schemas, and CI",
   "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "build": "pnpm --filter \"./packages/*\" run build",
-    "test": "vitest run",
+    "build": "pnpm --filter \"./packages/*\" run build && pnpm --filter \"./apps/*\" --filter \"./examples/*\" --filter \"./benchmarks/*\" run build",
+    "test": "pnpm build && pnpm test:unit && pnpm test:python && pnpm test:package && pnpm test:site && pnpm versions:check",
+    "test:unit": "vitest run",
+    "test:python": "PYTHONPATH=packages/agent-python python3 -m unittest discover -s packages/agent-python/tests -v",
+    "test:package": "node scripts/test-package.mjs",
+    "test:site": "node scripts/check-site.mjs",
     "test:watch": "vitest",
-    "benchmark": "pnpm --filter \"@infrawaste/benchmark-agent-overhead\" run start",
+    "benchmark": "pnpm --filter \"@vellox/benchmark-agent-overhead\" run start",
     "cli": "node packages/cli/dist/bin.js",
     "demo": "node packages/cli/dist/bin.js demo",
-    "start:collector": "pnpm --filter \"@infrawaste/collector\" run start",
-    "start:bad-api": "pnpm --filter \"@infrawaste/bad-api\" run start",
-    "doctor": "node packages/cli/dist/bin.js doctor"
+    "start:collector": "pnpm --filter \"@vellox/collector\" run start",
+    "start:bad-api": "pnpm --filter \"@vellox/example-bad-api\" run start",
+    "doctor": "node packages/cli/dist/bin.js doctor",
+    "versions:check": "node scripts/check-versions.mjs",
+    "version:set": "node scripts/set-version.mjs"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

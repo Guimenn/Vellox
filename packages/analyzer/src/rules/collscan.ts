@@ -1,11 +1,10 @@
-import { DatabaseTelemetry, Finding } from '@infrawaste/core';
-import { CostEstimator } from '@infrawaste/cost-engine';
+import { DatabaseTelemetry, Finding } from '@vellox/core';
 
 export class CollScanRule {
   /**
    * Detects unindexed MongoDB collection scans (COLLSCAN).
    */
-  public static analyze(telemetry: DatabaseTelemetry, costEstimator: CostEstimator): Finding | null {
+  public static analyze(telemetry: DatabaseTelemetry): Finding | null {
     if (telemetry.databaseType !== 'mongodb') return null;
     if (!telemetry.rowsRead || !telemetry.rowsReturned || telemetry.executionCount < 5) return null;
 
@@ -13,8 +12,6 @@ export class CollScanRule {
     if (scanRatio < 15 || telemetry.rowsRead < 500) return null;
 
     const confidence = Math.min(96, Math.round(80 + Math.min(16, scanRatio / 8)));
-    const estimatedCapacityWaste = Math.min(30, Math.round((scanRatio / 50) * 12) || 8);
-    const savings = costEstimator.estimateDatabaseWasteSavings(estimatedCapacityWaste);
 
     return {
       id: `waste_collscan_${telemetry.fingerprint}_${telemetry.timestamp}`,
@@ -25,18 +22,14 @@ export class CollScanRule {
       confidence,
       severity: 'HIGH',
       impact: {
-        databaseLoad: -estimatedCapacityWaste,
-        latencyPercent: -22,
-        estimatedMonthlyCost: savings.estimatedPotentialSavingsUsd
+        estimatedMonthlyCost: null
       },
       recommendation: {
         action: 'Create MongoDB index for filtered fields',
         explanation: `Operation scanned ${telemetry.rowsRead.toLocaleString()} documents to return ${telemetry.rowsReturned.toLocaleString()} documents.`,
         suggestedSolution: 'Add db.collection.createIndex({ <field>: 1 }) to eliminate collection scan.',
         estimatedImpact: {
-          databaseLoad: -estimatedCapacityWaste,
-          latencyPercent: -22,
-          estimatedMonthlyCost: savings.estimatedPotentialSavingsUsd
+          estimatedMonthlyCost: null
         },
         evidence: {
           docsExamined: telemetry.rowsRead,

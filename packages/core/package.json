@@ -1,7 +1,7 @@
 {
-  "name": "@infrawaste/core",
-  "version": "0.1.0",
-  "description": "Core data models, streaming logarithmic histograms, cardinality control, and ring buffer for InfraWaste",
+  "name": "@vellox/core",
+  "version": "0.2.0",
+  "description": "Core data models, streaming logarithmic histograms, cardinality control, and ring buffer for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

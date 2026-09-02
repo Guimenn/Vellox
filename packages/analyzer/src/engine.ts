@@ -1,5 +1,4 @@
-import { DatabaseTelemetry, Finding, HttpAggregateTelemetry } from '@infrawaste/core';
-import { CostEstimator } from '@infrawaste/cost-engine';
+import { DatabaseTelemetry, Finding, HttpAggregateTelemetry } from '@vellox/core';
 import { RepeatedQueryRule } from './rules/repeated-query.js';
 import { NPlusOneRule } from './rules/n-plus-one.js';
 import { TableScanRule } from './rules/table-scan.js';
@@ -13,12 +12,6 @@ export interface AnalysisInput {
 }
 
 export class WasteAnalyzerEngine {
-  private costEstimator: CostEstimator;
-
-  constructor(costEstimator?: CostEstimator) {
-    this.costEstimator = costEstimator || new CostEstimator();
-  }
-
   /**
    * Evaluates all telemetry inputs and returns prioritized, evidence-backed waste findings.
    */
@@ -30,36 +23,36 @@ export class WasteAnalyzerEngine {
     // 1. Analyze Database Telemetry rules
     for (const db of dbList) {
       // Repeated Query Check
-      const rep = RepeatedQueryRule.analyze(db, this.costEstimator);
+      const rep = RepeatedQueryRule.analyze(db);
       if (rep) findings.push(rep);
 
       // Relational Table Scan Check
-      const tbl = TableScanRule.analyze(db, this.costEstimator);
+      const tbl = TableScanRule.analyze(db);
       if (tbl) findings.push(tbl);
 
       // MongoDB COLLSCAN Check
-      const coll = CollScanRule.analyze(db, this.costEstimator);
+      const coll = CollScanRule.analyze(db);
       if (coll) findings.push(coll);
 
       // Redis Expensive Command Check
-      const redis = RedisExpensiveRule.analyze(db, this.costEstimator);
+      const redis = RedisExpensiveRule.analyze(db);
       if (redis) findings.push(redis);
 
       // DB Cache Opportunity
-      const dbCache = CacheOpportunityRule.analyzeDb(db, this.costEstimator);
+      const dbCache = CacheOpportunityRule.analyzeDb(db);
       if (dbCache) findings.push(dbCache);
     }
 
     // 2. Correlate HTTP + Database for N+1 detection and Root Cause Analysis
     for (const http of httpList) {
       // HTTP Cache Opportunity
-      const httpCache = CacheOpportunityRule.analyzeHttp(http, this.costEstimator);
+      const httpCache = CacheOpportunityRule.analyzeHttp(http);
       if (httpCache) findings.push(httpCache);
 
       // Match with DB queries in same service
       for (const db of dbList) {
         if (db.service === http.service) {
-          const nplus1 = NPlusOneRule.analyze(http, db, this.costEstimator);
+          const nplus1 = NPlusOneRule.analyze(http, db);
           if (nplus1) {
             findings.push(nplus1);
           }

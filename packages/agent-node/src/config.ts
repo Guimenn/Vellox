@@ -35,9 +35,10 @@ export interface ResolvedAgentConfig {
 }
 
 export const DEFAULT_AGENT_CONFIG: ResolvedAgentConfig = {
-  serviceName: process.env.INFRAWASTE_SERVICE_NAME || 'node-service',
+  // INFRAWASTE_* remains a read-only fallback for pre-0.2 deployments.
+  serviceName: process.env.VELLOX_SERVICE_NAME || process.env.INFRAWASTE_SERVICE_NAME || 'node-service',
   environment: process.env.NODE_ENV || 'production',
-  collectorEndpoint: process.env.INFRAWASTE_COLLECTOR_URL || null,
+  collectorEndpoint: process.env.VELLOX_COLLECTOR_URL || process.env.INFRAWASTE_COLLECTOR_URL || null,
   flushIntervalMs: 5000,
   maxBatchSize: 100,
   maxMemoryBytes: 30 * 1024 * 1024, // 30 MB buffer limit (well within < 50MB SLA)

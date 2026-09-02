@@ -16,7 +16,7 @@ describe('Collector Server', () => {
       metadata: {
         service: 'checkout-service',
         environment: 'production',
-        agentVersion: '0.1.0',
+        agentVersion: '0.2.0',
         hostname: 'node-1',
         droppedBatches: 0,
         droppedEvents: 0,
@@ -80,10 +80,10 @@ describe('Collector Server', () => {
       .get('/metrics')
       .expect(200);
 
-    expect(res.text).toContain('# HELP infrawaste_batches_ingested_total');
-    expect(res.text).toContain('# TYPE infrawaste_batches_ingested_total counter');
-    expect(res.text).toContain('infrawaste_memory_rss_bytes');
+    expect(res.text).toContain('# HELP vellox_batches_ingested_total');
+    expect(res.text).toContain('# TYPE vellox_batches_ingested_total counter');
+    expect(res.text).toContain('vellox_memory_rss_bytes');
+    expect(res.text).not.toContain('monthly_savings_usd');
     expect(res.headers['content-type']).toContain('text/plain');
   });
 });
-

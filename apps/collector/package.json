@@ -1,18 +1,17 @@
 {
-  "name": "@infrawaste/collector",
-  "version": "0.1.0",
+  "name": "@vellox/collector",
+  "version": "0.2.0",
   "private": true,
-  "description": "High-throughput stateless batch telemetry collector for InfraWaste",
+  "description": "High-throughput stateless batch telemetry collector for Vellox",
   "type": "module",
   "scripts": {
     "build": "tsup src/server.ts --format esm --clean",
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@infrawaste/core": "workspace:*",
-    "@infrawaste/cost-engine": "workspace:*",
-    "@infrawaste/analyzer": "workspace:*",
-    "@infrawaste/otel-bridge": "workspace:*",
+    "@vellox/core": "workspace:*",
+    "@vellox/analyzer": "workspace:*",
+    "@vellox/otel-bridge": "workspace:*",
     "express": "^4.21.2"
   },
   "devDependencies": {

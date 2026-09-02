@@ -18,7 +18,7 @@ describe('TelemetrySanitizer', () => {
 
   it('should filter out sensitive authentication headers', () => {
     const rawHeaders = {
-      'host': 'api.infrawaste.io',
+      'host': 'api.vellox.dev',
       'user-agent': 'Mozilla/5.0',
       'authorization': 'Bearer super-secret-token',
       'cookie': 'session_id=abcdef123456',
@@ -28,7 +28,7 @@ describe('TelemetrySanitizer', () => {
 
     const safe = sanitizer.filterHeaders(rawHeaders);
 
-    expect(safe['host']).toBe('api.infrawaste.io');
+    expect(safe['host']).toBe('api.vellox.dev');
     expect(safe['content-type']).toBe('application/json');
     expect(safe['user-agent']).toBe('Mozilla/5.0');
     expect(safe['authorization']).toBeUndefined();

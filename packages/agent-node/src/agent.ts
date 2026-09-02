@@ -1,14 +1,14 @@
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
-import { BoundedTelemetryBuffer, BufferStats, TelemetryBatch } from '@infrawaste/core';
+import { BoundedTelemetryBuffer, BufferStats, TelemetryBatch } from '@vellox/core';
 import { AgentConfig, ResolvedAgentConfig, resolveConfig } from './config.js';
 import { LocalAggregator } from './aggregator.js';
 import { AdaptiveSampler } from './sampler.js';
 
-const AGENT_VERSION = '0.1.0';
+const AGENT_VERSION = '0.2.0';
 
-export class InfraWasteAgent {
-  private static instance: InfraWasteAgent | null = null;
+export class VelloxAgent {
+  private static instance: VelloxAgent | null = null;
 
   private config: ResolvedAgentConfig;
   private buffer: BoundedTelemetryBuffer;
@@ -33,15 +33,15 @@ export class InfraWasteAgent {
     }
   }
 
-  public static init(config?: AgentConfig): InfraWasteAgent {
-    if (!InfraWasteAgent.instance) {
-      InfraWasteAgent.instance = new InfraWasteAgent(config);
+  public static init(config?: AgentConfig): VelloxAgent {
+    if (!VelloxAgent.instance) {
+      VelloxAgent.instance = new VelloxAgent(config);
     }
-    return InfraWasteAgent.instance;
+    return VelloxAgent.instance;
   }
 
-  public static getInstance(): InfraWasteAgent | null {
-    return InfraWasteAgent.instance;
+  public static getInstance(): VelloxAgent | null {
+    return VelloxAgent.instance;
   }
 
   public start(): void {
@@ -133,7 +133,7 @@ export class InfraWasteAgent {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-InfraWaste-Agent-Version': AGENT_VERSION
+          'X-Vellox-Agent-Version': AGENT_VERSION
         },
         body: JSON.stringify(batch),
         signal: AbortSignal.timeout(3000) // 3-second hard timeout
@@ -160,9 +160,9 @@ export class InfraWasteAgent {
   }
 
   public static resetInstance(): void {
-    if (InfraWasteAgent.instance) {
-      InfraWasteAgent.instance.stop();
-      InfraWasteAgent.instance = null;
+    if (VelloxAgent.instance) {
+      VelloxAgent.instance.stop();
+      VelloxAgent.instance = null;
     }
   }
 }

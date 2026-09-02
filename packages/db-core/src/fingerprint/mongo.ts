@@ -1,5 +1,5 @@
 import * as crypto from 'node:crypto';
-import { NormalizedQuery } from '@infrawaste/core';
+import { NormalizedQuery } from '@vellox/core';
 
 export class MongoFingerprinter {
   /**

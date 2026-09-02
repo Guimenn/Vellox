@@ -1,7 +1,7 @@
 {
-  "name": "@infrawaste/cost-engine",
-  "version": "0.1.0",
-  "description": "Deterministic infrastructure cost modeling & potential savings engine for InfraWaste",
+  "name": "@vellox/cost-engine",
+  "version": "0.2.0",
+  "description": "Deterministic infrastructure cost modeling & potential savings engine for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -13,7 +13,7 @@
     }
   },
   "dependencies": {
-    "@infrawaste/core": "workspace:*"
+    "@vellox/core": "workspace:*"
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",

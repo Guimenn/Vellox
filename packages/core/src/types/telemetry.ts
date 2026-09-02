@@ -1,5 +1,5 @@
 /**
- * Universal Telemetry Data Models for InfraWaste
+ * Universal telemetry data models for Vellox.
  */
 
 export type DatabaseType =

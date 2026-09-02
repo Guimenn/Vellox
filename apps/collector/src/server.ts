@@ -1,8 +1,9 @@
 import express, { Request, Response } from 'express';
-import { BoundedTelemetryBuffer, DatabaseTelemetry, Finding, HttpAggregateTelemetry, TelemetryBatch } from '@infrawaste/core';
-import { WasteAnalyzerEngine } from '@infrawaste/analyzer';
-import { CostEstimator } from '@infrawaste/cost-engine';
-import { OtelTransformer } from '@infrawaste/otel-bridge';
+import { BoundedTelemetryBuffer, DatabaseTelemetry, Finding, HttpAggregateTelemetry, TelemetryBatch } from '@vellox/core';
+import { WasteAnalyzerEngine } from '@vellox/analyzer';
+import { OtelTransformer } from '@vellox/otel-bridge';
+
+const COLLECTOR_VERSION = '0.2.0';
 
 export function createCollectorApp() {
   const app = express();
@@ -13,8 +14,7 @@ export function createCollectorApp() {
     maxMemoryBytes: 50 * 1024 * 1024 // 50MB collector memory buffer
   });
 
-  const costEstimator = new CostEstimator('aws');
-  const analyzer = new WasteAnalyzerEngine(costEstimator);
+  const analyzer = new WasteAnalyzerEngine();
 
   let totalBatchesIngested = 0;
   let totalHttpAggregates = 0;
@@ -190,33 +190,28 @@ export function createCollectorApp() {
 
   // Prometheus standard metrics endpoint
   app.get('/metrics', (_req: Request, res: Response) => {
-    const totalSavings = cachedFindings.reduce((acc, f) => acc + (f.impact?.estimatedMonthlySavingsUsd || 0), 0);
     const memBytes = process.memoryUsage().rss;
 
     const metricsText = [
-      '# HELP infrawaste_batches_ingested_total Total count of telemetry batches received',
-      '# TYPE infrawaste_batches_ingested_total counter',
-      `infrawaste_batches_ingested_total ${totalBatchesIngested}`,
+      '# HELP vellox_batches_ingested_total Total count of telemetry batches received',
+      '# TYPE vellox_batches_ingested_total counter',
+      `vellox_batches_ingested_total ${totalBatchesIngested}`,
       '',
-      '# HELP infrawaste_http_requests_total Total HTTP requests recorded',
-      '# TYPE infrawaste_http_requests_total counter',
-      `infrawaste_http_requests_total ${totalHttpAggregates}`,
+      '# HELP vellox_http_requests_total Total HTTP requests recorded',
+      '# TYPE vellox_http_requests_total counter',
+      `vellox_http_requests_total ${totalHttpAggregates}`,
       '',
-      '# HELP infrawaste_database_queries_total Total database queries recorded',
-      '# TYPE infrawaste_database_queries_total counter',
-      `infrawaste_database_queries_total ${totalDbMetrics}`,
+      '# HELP vellox_database_queries_total Total database queries recorded',
+      '# TYPE vellox_database_queries_total counter',
+      `vellox_database_queries_total ${totalDbMetrics}`,
       '',
-      '# HELP infrawaste_active_findings_count Current active waste and anti-pattern findings',
-      '# TYPE infrawaste_active_findings_count gauge',
-      `infrawaste_active_findings_count ${cachedFindings.length}`,
+      '# HELP vellox_active_findings_count Current active evidence-backed findings',
+      '# TYPE vellox_active_findings_count gauge',
+      `vellox_active_findings_count ${cachedFindings.length}`,
       '',
-      '# HELP infrawaste_waste_monthly_savings_usd Total potential monthly savings identified in USD',
-      '# TYPE infrawaste_waste_monthly_savings_usd gauge',
-      `infrawaste_waste_monthly_savings_usd ${totalSavings}`,
-      '',
-      '# HELP infrawaste_memory_rss_bytes Collector process RSS memory in bytes',
-      '# TYPE infrawaste_memory_rss_bytes gauge',
-      `infrawaste_memory_rss_bytes ${memBytes}`,
+      '# HELP vellox_memory_rss_bytes Collector process RSS memory in bytes',
+      '# TYPE vellox_memory_rss_bytes gauge',
+      `vellox_memory_rss_bytes ${memBytes}`,
       ''
     ].join('\n');
 
@@ -228,7 +223,7 @@ export function createCollectorApp() {
   app.get('/api/v1/health', (_req: Request, res: Response) => {
     res.json({
       status: 'healthy',
-      version: '0.1.0',
+      version: COLLECTOR_VERSION,
       uptimeSec: Number(process.uptime().toFixed(1))
     });
   });
@@ -242,6 +237,6 @@ if (process.argv[1]?.includes('server.ts') || process.argv[1]?.includes('server.
   const port = process.env.PORT || 4000;
   const app = createCollectorApp();
   app.listen(port, () => {
-    console.log(`📡 InfraWaste Collector listening on http://localhost:${port}`);
+    console.log(`📡 Vellox Collector listening on http://localhost:${port}`);
   });
 }

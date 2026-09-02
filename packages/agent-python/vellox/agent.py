@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Optional
 import urllib.request
 import urllib.error
 
-logger = logging.getLogger("infrawaste")
+logger = logging.getLogger("vellox")
 
 
-class InfraWasteAgent:
-    _instance: Optional["InfraWasteAgent"] = None
+class VelloxAgent:
+    _instance: Optional["VelloxAgent"] = None
     _lock = threading.Lock()
 
     def __init__(
@@ -32,12 +32,12 @@ class InfraWasteAgent:
 
         self._running = True
         self._worker_thread = threading.Thread(
-            target=self._flush_loop, daemon=True, name="InfraWaste-FlushWorker"
+            target=self._flush_loop, daemon=True, name="Vellox-FlushWorker"
         )
         self._worker_thread.start()
 
     @classmethod
-    def get_instance(cls, **kwargs) -> "InfraWasteAgent":
+    def get_instance(cls, **kwargs) -> "VelloxAgent":
         with cls._lock:
             if cls._instance is None:
                 cls._instance = cls(**kwargs)
@@ -93,7 +93,7 @@ class InfraWasteAgent:
                 pass
         except Exception as e:
             # Principle 10: Telemetry collection failure must never crash the host application
-            logger.debug(f"[InfraWaste] Collector flush failed (ignoring gracefully): {e}")
+            logger.debug(f"[Vellox] Collector flush failed (ignoring gracefully): {e}")
 
     def _flush_loop(self) -> None:
         while self._running:

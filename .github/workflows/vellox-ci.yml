@@ -1,39 +1,54 @@
-name: Vellox Performance, Security & CI Gatekeeper
+name: Vellox CI
 
 on:
   pull_request:
-    branches: [main, master, develop]
+    branches: [main]
   push:
-    branches: [main, master]
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  vellox-gatekeeper:
-    name: Vellox Performance, Security & Test Gatekeeper
+  verify:
+    name: Build, test, package and site
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v6
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
-          version: 10.5.2
+          version: 11.25.0
+          run_install: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 22
-          cache: 'pnpm'
+          node-version: 24
+          cache: pnpm
 
-      - name: Install Dependencies
-        run: pnpm install --frozen-lockfile || pnpm install
+      - name: Install dependencies reproducibly
+        run: pnpm install --frozen-lockfile
 
-      - name: Build Monorepo
+      - name: Verify workspace versions
+        run: pnpm versions:check
+
+      - name: Build monorepo
         run: pnpm build
 
-      - name: Run Test Suites & Chaos Resilience
-        run: pnpm test
+      - name: Run unit, integration and chaos tests
+        run: pnpm test:unit
 
-      - name: Evaluate Performance & Waste Budget Gatekeeper
-        run: node packages/cli/dist/bin.js check
+      - name: Run Python agent tests
+        run: pnpm test:python
+
+      - name: Test the packed npm artifact
+        run: pnpm test:package
+
+      - name: Smoke-test GitHub Pages root
+        run: pnpm test:site
+
+      - name: Run Vellox against itself
+        run: node packages/cli/dist/bin.js check --max-critical 0 --max-high 0

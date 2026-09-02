@@ -7,7 +7,7 @@ import {
   DatabaseType,
   LogHistogram,
   NormalizedQuery
-} from '@infrawaste/core';
+} from '@vellox/core';
 import { SqlFingerprinter } from '../fingerprint/sql.js';
 
 interface QueryMetricAccumulator {

@@ -1,7 +1,7 @@
 {
-  "name": "@infrawaste/explain-analyzer",
-  "version": "0.1.0",
-  "description": "PostgreSQL, MySQL & MongoDB EXPLAIN execution plan deep analyzer for InfraWaste",
+  "name": "@vellox/explain-analyzer",
+  "version": "0.2.0",
+  "description": "PostgreSQL, MySQL & MongoDB EXPLAIN execution plan deep analyzer for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -13,7 +13,7 @@
     }
   },
   "dependencies": {
-    "@infrawaste/core": "workspace:*"
+    "@vellox/core": "workspace:*"
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
