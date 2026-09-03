@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import createIgnore from 'ignore';
 import { loadConfig } from './config.js';
+import { buildProjectSemanticIndex } from './project-graph.js';
 import { scanJavaScriptStructure, scanPythonStructure } from './structural-code.js';
 import { Severity, VelloxConfig, VelloxFinding, VelloxFindingInput, VelloxReport } from './types.js';
 
@@ -1001,15 +1002,24 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
   const files = walk(target, config);
   const databaseContext = detectDatabaseContext(target, files);
   const findings: VelloxFinding[] = [];
+  const contents = new Map<string, string>();
 
   for (const file of files) {
-    let content: string;
     try {
       if (fs.statSync(file).size > 2_000_000) continue;
-      content = fs.readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
+      contents.set(file, fs.readFileSync(file, 'utf8'));
+    } catch {}
+  }
+  const semanticSources = new Map<string, string>();
+  for (const [file, content] of contents) {
+    const relative = path.relative(target, file).replace(/\\/g, '/');
+    if (/\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file) && !isTestOrFixtureFile(relative)) semanticSources.set(relative, content);
+  }
+  const semanticIndex = buildProjectSemanticIndex(target, semanticSources);
+
+  for (const file of files) {
+    const content = contents.get(file);
+    if (content === undefined) continue;
     const relative = path.relative(target, file).replace(/\\/g, '/');
     if (file.endsWith('.prisma')) findings.push(...scanPrisma(content, relative));
     if (/\.(?:js|jsx|ts|tsx)$/i.test(file) && /(?:pgTable|mysqlTable|sqliteTable)\s*\(/.test(content)) findings.push(...scanDrizzle(content, relative));
@@ -1021,11 +1031,11 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
     findings.push(...scanInfrastructure(content, relative));
     let structurallyParsed = false;
     if (inspectCode && /\.(?:cjs|js|jsx|mjs|ts|tsx)$/i.test(file)) {
-      const structural = scanJavaScriptStructure(content, relative);
+      const structural = scanJavaScriptStructure(content, relative, semanticIndex.externalQueryFunctions.get(relative));
       structurallyParsed = structural.parsed;
       findings.push(...structural.findings.map(finding));
     } else if (inspectCode && /\.py$/i.test(file)) {
-      const structural = scanPythonStructure(content, relative);
+      const structural = scanPythonStructure(content, relative, semanticIndex.externalQueryFunctions.get(relative));
       structurallyParsed = structural.parsed;
       findings.push(...structural.findings.map(finding));
     }

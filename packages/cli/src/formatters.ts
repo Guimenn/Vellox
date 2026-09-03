@@ -40,6 +40,7 @@ export function formatPretty(report: VelloxReport): string {
     if (item.confidence) lines.push(`   Confidence: ${item.confidence}`);
     lines.push(`   Location:  ${location}`);
     lines.push(`   Evidence:  ${item.evidence}`);
+    if (typeof item.metadata?.callPath === 'string') lines.push(`   Call path: ${item.metadata.callPath}`);
     lines.push(`   Action:    ${item.recommendation}`);
     if (item.sql) lines.push(`   SQL:       ${item.sql}`);
     lines.push('');
@@ -58,7 +59,7 @@ export function formatMarkdown(report: VelloxReport): string {
     const location = item.file ? `\`${item.file}${item.line ? `:${item.line}` : ''}\`` : 'inline input';
     return `| ${item.severity} | ${item.confidence || '—'} | \`${item.ruleId}\` | ${item.title.replace(/\|/g, '\\|')} | ${location} |`;
   });
-  const detail = report.findings.map((item, index) => `### ${index + 1}. ${item.title}\n\n- **Severity:** ${item.severity}\n- **Confidence:** ${item.confidence || 'Not assigned'}\n- **Rule:** \`${item.ruleId}\`\n- **Location:** ${item.file ? `\`${item.file}${item.line ? `:${item.line}` : ''}\`` : 'inline input'}\n- **Evidence:** ${item.evidence}\n- **Recommendation:** ${item.recommendation}${item.sql ? `\n- **Reviewable SQL:**\n\n\`\`\`sql\n${item.sql}\n\`\`\`` : ''}`).join('\n\n');
+  const detail = report.findings.map((item, index) => `### ${index + 1}. ${item.title}\n\n- **Severity:** ${item.severity}\n- **Confidence:** ${item.confidence || 'Not assigned'}\n- **Rule:** \`${item.ruleId}\`\n- **Location:** ${item.file ? `\`${item.file}${item.line ? `:${item.line}` : ''}\`` : 'inline input'}\n- **Evidence:** ${item.evidence}${typeof item.metadata?.callPath === 'string' ? `\n- **Call path:** \`${item.metadata.callPath}\`` : ''}\n- **Recommendation:** ${item.recommendation}${item.sql ? `\n- **Reviewable SQL:**\n\n\`\`\`sql\n${item.sql}\n\`\`\`` : ''}`).join('\n\n');
 
   return `# Vellox Engineering Report\n\nGenerated from an actual project scan on ${report.generatedAt}.\n\n## Summary\n\n| Metric | Value |\n| --- | ---: |\n| Files inspected | ${report.summary.filesScanned} |\n| Critical findings | ${report.summary.critical} |\n| High findings | ${report.summary.high} |\n| Medium findings | ${report.summary.medium} |\n| Exposed secrets | ${report.summary.secrets} |\n| Infrastructure findings | ${report.summary.infrastructure ?? 0} |\n| Reviewable SQL suggestions | ${report.summary.reviewableSqlFixes} |\n\n> Vellox does not invent monetary savings from static analysis. Cost estimates require measured telemetry and an explicit pricing model.\n\n## Findings\n\n${rows.length ? `| Severity | Confidence | Rule | Finding | Location |\n| --- | --- | --- | --- | --- |\n${rows.join('\n')}\n\n${detail}` : 'No supported high-risk patterns were detected.'}\n`;
 }
@@ -85,7 +86,7 @@ export function toSarif(report: VelloxReport): Record<string, unknown> {
         ruleId: item.ruleId,
         level: sarifLevel(item.severity),
         message: { text: `${item.title}: ${item.evidence}` },
-        properties: item.confidence ? { confidence: item.confidence } : undefined,
+        properties: item.confidence || item.metadata ? { ...(item.metadata || {}), ...(item.confidence ? { confidence: item.confidence } : {}) } : undefined,
         partialFingerprints: { velloxFingerprint: item.fingerprint },
         locations: item.file ? [{
           physicalLocation: {

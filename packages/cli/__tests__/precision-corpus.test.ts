@@ -45,6 +45,21 @@ const corpus: CorpusCase[] = [
     forbidden: ['code/unbounded-async-fanout']
   },
   {
+    name: 'JavaScript statically bounded fan-out through a derived collection', language: 'javascript',
+    source: 'const MAX_BATCH = 20;\nasync function load(ids) { const selected = ids.slice(0, MAX_BATCH); return Promise.all(selected.map(id => prisma.user.findUnique({ where: { id } }))); }',
+    forbidden: ['code/unbounded-query-fanout', 'code/unbounded-async-fanout']
+  },
+  {
+    name: 'JavaScript dangerously large derived fan-out remains visible', language: 'javascript',
+    source: 'async function load(ids) { const selected = ids.slice(0, 1000); return Promise.all(selected.map(id => prisma.user.findUnique({ where: { id } }))); }',
+    expected: ['code/unbounded-query-fanout']
+  },
+  {
+    name: 'JavaScript spread copy does not invent a static bound', language: 'javascript',
+    source: 'async function load(ids) { const selected = [...ids]; return Promise.all(selected.map(id => prisma.user.findUnique({ where: { id } }))); }',
+    expected: ['code/unbounded-query-fanout']
+  },
+  {
     name: 'JavaScript bounded batch', language: 'javascript',
     source: 'async function load(batches) { for (const batch of batches) await Promise.all(batch.map(id => prisma.user.findUnique({ where: { id } }))); }',
     forbidden: ['code/query-in-loop', 'code/sequential-async-loop', 'code/unbounded-async-fanout', 'code/unbounded-query-fanout', 'code/quadratic-nested-iteration']
@@ -136,6 +151,16 @@ const corpus: CorpusCase[] = [
     name: 'Python bounded database gather batch', language: 'python',
     source: 'async def load(batch):\n    return await asyncio.gather(*(session.execute(query) for query in batch))\n',
     forbidden: ['code/unbounded-query-fanout', 'code/unbounded-async-fanout']
+  },
+  {
+    name: 'Python statically bounded gather through a derived collection', language: 'python',
+    source: 'MAX_BATCH = 20\n\nasync def load(ids):\n    selected = ids[:MAX_BATCH]\n    return await asyncio.gather(*(session.execute(query) for query in selected))\n',
+    forbidden: ['code/unbounded-query-fanout', 'code/unbounded-async-fanout']
+  },
+  {
+    name: 'Python dangerously large derived gather remains visible', language: 'python',
+    source: 'async def load(ids):\n    selected = ids[:1000]\n    return await asyncio.gather(*(session.execute(query) for query in selected))\n',
+    expected: ['code/unbounded-query-fanout']
   },
   {
     name: 'Python paced polling', language: 'python',

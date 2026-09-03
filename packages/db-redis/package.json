@@ -1,6 +1,6 @@
 {
   "name": "@vellox/db-redis",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Redis memory, eviction & expensive command telemetry adapter for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
