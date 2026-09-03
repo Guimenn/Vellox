@@ -3,7 +3,7 @@ import { BoundedTelemetryBuffer, DatabaseTelemetry, Finding, HttpAggregateTeleme
 import { WasteAnalyzerEngine } from '@vellox/analyzer';
 import { OtelTransformer } from '@vellox/otel-bridge';
 
-const COLLECTOR_VERSION = '0.4.0';
+const COLLECTOR_VERSION = '0.5.0';
 
 export function createCollectorApp() {
   const app = express();

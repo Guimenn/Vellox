@@ -19,9 +19,14 @@ export class WasteAnalyzerEngine {
     const findings: Finding[] = [];
     const httpList = input.httpAggregates || [];
     const dbList = input.databaseTelemetry || [];
+    const databaseByService = new Map<string, DatabaseTelemetry[]>();
 
     // 1. Analyze Database Telemetry rules
     for (const db of dbList) {
+      const serviceQueries = databaseByService.get(db.service) || [];
+      serviceQueries.push(db);
+      databaseByService.set(db.service, serviceQueries);
+
       // Repeated Query Check
       const rep = RepeatedQueryRule.analyze(db);
       if (rep) findings.push(rep);
@@ -50,12 +55,10 @@ export class WasteAnalyzerEngine {
       if (httpCache) findings.push(httpCache);
 
       // Match with DB queries in same service
-      for (const db of dbList) {
-        if (db.service === http.service) {
-          const nplus1 = NPlusOneRule.analyze(http, db);
-          if (nplus1) {
-            findings.push(nplus1);
-          }
+      for (const db of databaseByService.get(http.service) || []) {
+        const nplus1 = NPlusOneRule.analyze(http, db);
+        if (nplus1) {
+          findings.push(nplus1);
         }
       }
     }

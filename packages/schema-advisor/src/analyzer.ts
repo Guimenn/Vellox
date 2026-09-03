@@ -97,10 +97,11 @@ export class SchemaAdvisor {
 
     // 3. Detect Redundant Prefix Indexes
     for (const [table, indexList] of compositeIndexesByTable.entries()) {
+      const singleColumnIndexes = new Set(indexList.filter(columns => columns.length === 1).map(columns => columns[0]!));
       for (const cols of indexList) {
         if (cols.length > 1) {
           const leadCol = cols[0]!;
-          const hasRedundantSingle = indexList.some((other) => other.length === 1 && other[0] === leadCol);
+          const hasRedundantSingle = singleColumnIndexes.has(leadCol);
           if (hasRedundantSingle) {
             findings.push({
               id: `redundant-index-${table}-${leadCol}`,

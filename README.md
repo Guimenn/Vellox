@@ -11,7 +11,7 @@ Find supported risks, inspect the evidence, and review the action.
 
 [![npm](https://img.shields.io/npm/v/vellox?style=flat-square&label=npx%20vellox&labelColor=070908&color=c8ff53)](https://www.npmjs.com/package/vellox)
 [![CI](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml/badge.svg)](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml)
-[![tests](https://img.shields.io/badge/tests-102%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
+[![tests](https://img.shields.io/badge/tests-123%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-070908?style=flat-square&labelColor=070908&color=c8ff53)](./package.json)
 [![license](https://img.shields.io/badge/license-proprietary-070908?style=flat-square&labelColor=070908&color=c8ff53)](./LICENSE)
 
@@ -40,7 +40,7 @@ No global install. Run it from the root of the project you want to inspect:
 npx vellox
 ```
 
-Vellox scans the current directory and reports N+1 database work, sequential loops, discarded promises, unbounded async fan-out, event-loop blocking, risky SQL, exposed credentials, and missing database indexes. Every command consumes the same evidence artifact:
+Vellox scans the current directory and reports N+1 database work, sequential loops, repeated linear searches and sorts, quadratic collection joins, unbounded ORM reads, discarded promises, uncontrolled async fan-out, event-loop blocking, risky SQL, exposed credentials, and missing database indexes. Every command consumes the same evidence artifact:
 
 ```text
 .vellox/report.json
@@ -82,9 +82,9 @@ npx vellox explain plan.json
 
 | Surface | Signals |
 | --- | --- |
-| **JavaScript & TypeScript** | Parser-backed N+1/query loops, async `forEach`, dangling async `map`, unbounded `Promise.all`, transaction-per-item, blocking calls in async functions |
-| **Python** | Parser-backed sync/async query loops, unbounded `asyncio.gather`, blocking I/O or sync database calls in async functions, transaction-per-item |
-| **SQL & ORM** | Plain and embedded SQL, unique-lookup-aware bounds, full-table writes, large join graphs, avoidable deduplication, dynamic SQL, missing FK indexes, Prisma and Drizzle schema gaps |
+| **JavaScript & TypeScript** | Parser-backed N+1/query loops, O(n²) collection joins, repeated linear searches/sorts, async `forEach`, dangling async `map`, unbounded `Promise.all`, transaction-per-item, blocking calls in async functions |
+| **Python** | Parser-backed sync/async query loops, nested collection scans, repeated membership/sorts, unbounded `asyncio.gather`, blocking I/O or sync database calls in async functions, transaction-per-item |
+| **SQL & ORM** | Unbounded Prisma/Mongoose/Sequelize/SQLAlchemy/Django reads, plain and embedded SQL, unique-lookup-aware bounds, full-table writes, large join graphs, avoidable deduplication, dynamic SQL, missing FK indexes |
 | **Infrastructure config** | Floating container images, effective final-stage users, complete Kubernetes CPU/memory policies and privileged workloads, Terraform public database/storage/ingress exposure |
 | **Execution plans** | PostgreSQL JSON plan nodes, sequential scans, external sorts, and buffer hit/read evidence |
 | **Security** | Supported API tokens, private keys, and credential-bearing database URLs with redacted output |
@@ -98,6 +98,7 @@ npx vellox explain plan.json
 - **No code execution.** Project files are read as text and the report stays on disk.
 - **Redacted credentials.** Secret findings never echo the complete matched value.
 - **Intentional escape hatch.** Use `// @vellox-ignore` for reviewed loops or batch routines.
+- **Confidence is explicit.** Structural certainty and heuristic risk are separate; ambiguous complexity and ORM-volume findings are labeled with medium confidence.
 
 ## CLI reference
 
@@ -125,6 +126,31 @@ npx vellox explain plan.json
 | `npx vellox top` | Summarizes the current report without pretending it is live telemetry |
 | `npx vellox --help` | Shows commands and shortcuts |
 
+### Project configuration
+
+`vellox init` creates a local configuration. The scanner automatically honors root `.gitignore` and `.velloxignore` files; `ignore` adds project-specific patterns. Exact rules, categories such as `query/*`, or every rule through `*` can be disabled or assigned a different severity.
+
+```json
+{
+  "reportPath": ".vellox/report.json",
+  "baselinePath": ".vellox/baseline.json",
+  "ignore": ["generated/", "legacy/**"],
+  "rules": {
+    "code/repeated-sort-in-loop": false,
+    "query/unbounded-orm-read": "HIGH",
+    "infra/*": { "enabled": false }
+  },
+  "budgets": {
+    "maxCritical": 0,
+    "maxHigh": 0,
+    "maxTotal": null,
+    "failOnSecrets": true
+  }
+}
+```
+
+`vellox hook` appends an idempotent marked block to an existing shell hook. `vellox ci` updates only workflows it generated and chooses a new filename when `vellox.yml` already belongs to the project.
+
 ## Support matrix
 
 | Layer | Supported integrations |
@@ -138,7 +164,7 @@ npx vellox explain plan.json
 
 ## Proof, not promises
 
-The repository currently passes **102 automated tests** (99 TypeScript + 3 Python), including CLI contract tests and adversarial fixtures for structural JS/TS/Python analysis, controlled concurrency, malformed-source fallback, SQL bounds, dynamic SQL, stable baselines, schemas, and manifests.
+The repository currently passes **123 automated tests** (120 TypeScript + 3 Python), including a positive/negative precision corpus, CLI safety contracts, structural JS/TS/Python analysis, controlled concurrency, malformed-source fallback, SQL bounds, dynamic SQL, stable baselines, schemas, and manifests.
 
 Reproduce the checks on your machine:
 

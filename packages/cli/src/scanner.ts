@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import createIgnore from 'ignore';
+import { loadConfig } from './config.js';
 import { scanJavaScriptStructure, scanPythonStructure } from './structural-code.js';
-import { Severity, VelloxFinding, VelloxFindingInput, VelloxReport } from './types.js';
+import { Severity, VelloxConfig, VelloxFinding, VelloxFindingInput, VelloxReport } from './types.js';
 
 const IGNORED_DIRECTORIES = new Set([
   '.git', '.next', '.nuxt', '.output', '.turbo', '.vellox',
@@ -37,8 +39,22 @@ function indexSql(table: string, column: string, dialect: string): string | unde
   return `CREATE INDEX${concurrently}${ifNotExists} ${quoteIdentifier(safeName, dialect)} ON ${quoteIdentifier(table, dialect)} (${quoteIdentifier(column, dialect)});`;
 }
 
-function walk(root: string): string[] {
+function ignoreMatcher(root: string, config: VelloxConfig): (relativePath: string) => boolean {
+  const matcher = createIgnore();
+  for (const fileName of ['.gitignore', '.velloxignore']) {
+    const filePath = path.join(root, fileName);
+    if (fs.existsSync(filePath)) matcher.add(fs.readFileSync(filePath, 'utf8'));
+  }
+  matcher.add(config.ignore || []);
+  return relativePath => {
+    const normalized = relativePath.replace(/\\/g, '/').replace(/^\.\//, '');
+    return normalized.length > 0 && matcher.ignores(normalized);
+  };
+}
+
+function walk(root: string, config: VelloxConfig): string[] {
   const files: string[] = [];
+  const ignored = ignoreMatcher(root, config);
   const visit = (directory: string, depth: number): void => {
     if (depth > 12) return;
     let entries: fs.Dirent[];
@@ -50,15 +66,30 @@ function walk(root: string): string[] {
     for (const entry of entries) {
       if (entry.isSymbolicLink()) continue;
       const fullPath = path.join(directory, entry.name);
+      const relative = path.relative(root, fullPath).replace(/\\/g, '/');
       if (entry.isDirectory()) {
-        if (!IGNORED_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.cache')) visit(fullPath, depth + 1);
-      } else if (SOURCE_FILE.test(entry.name)) {
+        if (!IGNORED_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.cache') && !ignored(`${relative}/`)) visit(fullPath, depth + 1);
+      } else if (SOURCE_FILE.test(entry.name) && !ignored(relative)) {
         files.push(fullPath);
       }
     }
   };
   visit(root, 0);
   return files.sort();
+}
+
+function configuredRule(ruleId: string, config: VelloxConfig): false | Severity | { enabled?: boolean; severity?: Severity } | undefined {
+  const rules = config.rules || {};
+  return rules[ruleId] ?? rules[`${ruleId.split('/')[0]}/*`] ?? rules['*'];
+}
+
+function applyRuleConfiguration(findings: VelloxFinding[], config: VelloxConfig): VelloxFinding[] {
+  return findings.flatMap(item => {
+    const setting = configuredRule(item.ruleId, config);
+    if (setting === false || (typeof setting === 'object' && setting.enabled === false)) return [];
+    const severity = typeof setting === 'string' ? setting : setting?.severity;
+    return [{ ...item, ...(severity ? { severity } : {}) }];
+  });
 }
 
 export function detectDatabaseContext(root: string, files: string[]): { detected: boolean; evidence: string[] } {
@@ -966,7 +997,8 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
   if (!fs.existsSync(target) || !fs.statSync(target).isDirectory()) {
     throw new Error(`Target directory does not exist: ${target}`);
   }
-  const files = walk(target);
+  const config = loadConfig(target);
+  const files = walk(target, config);
   const databaseContext = detectDatabaseContext(target, files);
   const findings: VelloxFinding[] = [];
 
@@ -1008,7 +1040,7 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
     item
   ])).values()];
   const occurrences = new Map<string, number>();
-  const unique = locationUnique.map(item => {
+  const unique = applyRuleConfiguration(locationUnique.map(item => {
     const occurrence = occurrences.get(item.fingerprint) || 0;
     occurrences.set(item.fingerprint, occurrence + 1);
     if (occurrence === 0) return item;
@@ -1016,7 +1048,7 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
       ...item,
       fingerprint: createHash('sha256').update(`${item.fingerprint}|occurrence:${occurrence}`).digest('hex').slice(0, 20)
     };
-  });
+  }), config);
   const severityRank: Record<Severity, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
   unique.sort((left, right) => severityRank[left.severity] - severityRank[right.severity]
     || (left.file || '').localeCompare(right.file || '') || (left.line || 0) - (right.line || 0));

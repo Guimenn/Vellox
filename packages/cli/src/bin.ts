@@ -325,16 +325,35 @@ function doctor(): void {
 
 function discover(target: string): void {
   const packagePath = path.join(target, 'package.json');
-  if (!fs.existsSync(packagePath)) throw new Error('No package.json found in ' + target);
-  const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-  const dependencies = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
-  const candidates: Record<string, string> = {
+  const detected = new Set<string>();
+  let manifestFound = false;
+  if (fs.existsSync(packagePath)) {
+    manifestFound = true;
+    const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const dependencies = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+    const candidates: Record<string, string> = {
     express: 'Express', fastify: 'Fastify', '@nestjs/core': 'NestJS', '@prisma/client': 'Prisma',
     typeorm: 'TypeORM', pg: 'PostgreSQL', mysql2: 'MySQL', mongoose: 'MongoDB', ioredis: 'Redis', oracledb: 'Oracle'
-  };
-  const detected = Object.entries(candidates).filter(([name]) => dependencies[name]).map(([, label]) => label);
-  console.log('Detected: ' + (detected.length ? detected.join(', ') : 'no supported Node.js integration'));
-  console.log('Only the public vellox CLI is recommended until the agent SDK packages are published.');
+    };
+    for (const [name, label] of Object.entries(candidates)) if (dependencies[name]) detected.add(label);
+  }
+  const pythonManifests = fs.readdirSync(target)
+    .filter(file => /^(?:pyproject\.toml|Pipfile|requirements(?:\.[\w-]+)?\.txt)$/i.test(file));
+  const pythonCandidates: Array<[RegExp, string]> = [
+    [/\bfastapi\b/i, 'FastAPI'], [/\bdjango\b/i, 'Django'], [/\bflask\b/i, 'Flask'],
+    [/\bsqlalchemy\b/i, 'SQLAlchemy'], [/\basyncpg\b/i, 'asyncpg'], [/\bpsycopg(?:2)?\b/i, 'PostgreSQL'],
+    [/\bpymongo\b/i, 'MongoDB'], [/\btortoise-orm\b/i, 'Tortoise ORM'], [/\bpeewee\b/i, 'Peewee'], [/\bredis\b/i, 'Redis']
+  ];
+  for (const manifest of pythonManifests) {
+    const manifestPath = path.join(target, manifest);
+    if (!fs.existsSync(manifestPath)) continue;
+    manifestFound = true;
+    const content = fs.readFileSync(manifestPath, 'utf8');
+    for (const [pattern, label] of pythonCandidates) if (pattern.test(content)) detected.add(label);
+  }
+  if (!manifestFound) throw new Error('No package.json, pyproject.toml, requirements.txt, or Pipfile found in ' + target);
+  console.log('Detected: ' + (detected.size ? [...detected].join(', ') : 'no supported framework or database integration'));
+  console.log('Static scanning remains local and does not require an SDK, database connection, or application runtime.');
 }
 
 function init(target: string): void {
@@ -347,16 +366,42 @@ function init(target: string): void {
 function hook(target: string): void {
   const gitDirectory = path.join(target, '.git');
   if (!fs.existsSync(gitDirectory)) throw new Error('Run this command from the root of a Git repository.');
-  const hookPath = path.join(gitDirectory, 'hooks', 'pre-commit');
+  let resolvedGitDirectory = gitDirectory;
+  if (fs.statSync(gitDirectory).isFile()) {
+    const pointer = /^gitdir:\s*(.+)$/im.exec(fs.readFileSync(gitDirectory, 'utf8'))?.[1]?.trim();
+    if (!pointer) throw new Error('Could not resolve the Git directory from ' + gitDirectory);
+    resolvedGitDirectory = path.resolve(target, pointer);
+  }
+  const commonDirectoryPointer = path.join(resolvedGitDirectory, 'commondir');
+  if (fs.existsSync(commonDirectoryPointer)) {
+    resolvedGitDirectory = path.resolve(resolvedGitDirectory, fs.readFileSync(commonDirectoryPointer, 'utf8').trim());
+  }
+  const hookPath = path.join(resolvedGitDirectory, 'hooks', 'pre-commit');
+  const marker = '# >>> vellox check >>>';
+  const block = `${marker}\nnpx --yes vellox check\n# <<< vellox check <<<\n`;
   fs.mkdirSync(path.dirname(hookPath), { recursive: true });
-  fs.writeFileSync(hookPath, '#!/usr/bin/env sh\nnpx --yes vellox check\n', { mode: 0o755 });
+  if (fs.existsSync(hookPath)) {
+    const existing = fs.readFileSync(hookPath, 'utf8');
+    if (existing.includes(marker)) {
+      console.log('Already installed: ' + hookPath);
+      return;
+    }
+    if (!/^#!.*\b(?:ba|da|z)?sh\b/m.test(existing)) {
+      throw new Error('Existing pre-commit hook is not a shell script; it was left unchanged: ' + hookPath);
+    }
+    fs.appendFileSync(hookPath, `${existing.endsWith('\n') ? '' : '\n'}\n${block}`, 'utf8');
+  } else {
+    fs.writeFileSync(hookPath, `#!/usr/bin/env sh\n${block}`, { mode: 0o755 });
+  }
   fs.chmodSync(hookPath, 0o755);
   console.log('Installed: ' + hookPath);
 }
 
 function ci(target: string): void {
-  const workflowPath = path.join(target, '.github', 'workflows', 'vellox.yml');
+  const workflowDirectory = path.join(target, '.github', 'workflows');
+  const marker = '# Generated by vellox ci';
   const workflow = [
+    marker,
     'name: Vellox',
     'on:',
     '  pull_request:',
@@ -380,7 +425,21 @@ function ci(target: string): void {
     '          sarif_file: vellox.sarif',
     '      - run: npx --yes vellox check'
   ].join('\n') + '\n';
-  fs.mkdirSync(path.dirname(workflowPath), { recursive: true });
+  fs.mkdirSync(workflowDirectory, { recursive: true });
+  const ownedWorkflow = fs.readdirSync(workflowDirectory)
+    .filter(file => /^vellox.*\.ya?ml$/i.test(file))
+    .map(file => path.join(workflowDirectory, file))
+    .find(file => fs.readFileSync(file, 'utf8').includes(marker));
+  let workflowPath = ownedWorkflow || path.join(workflowDirectory, 'vellox.yml');
+  if (!ownedWorkflow && fs.existsSync(workflowPath)) {
+    let suffix = 2;
+    while (fs.existsSync(path.join(workflowDirectory, `vellox-${suffix}.yml`))) suffix += 1;
+    workflowPath = path.join(workflowDirectory, `vellox-${suffix}.yml`);
+  }
+  if (fs.existsSync(workflowPath) && fs.readFileSync(workflowPath, 'utf8') === workflow) {
+    console.log('Already configured: ' + workflowPath);
+    return;
+  }
   fs.writeFileSync(workflowPath, workflow, 'utf8');
   console.log('Created: ' + workflowPath);
 }

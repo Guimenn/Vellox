@@ -1,6 +1,6 @@
 {
   "name": "vellox",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Local structural analyzer for JavaScript, TypeScript, Python, and SQL performance risks",
   "bin": {
     "vellox": "dist/bin.js"
@@ -60,7 +60,8 @@
   "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
     "@babel/parser": "^7.29.8",
-    "@lezer/python": "^1.1.19"
+    "@lezer/python": "^1.1.19",
+    "ignore": "^7.0.8"
   },
   "devDependencies": {
     "tsup": "^8.3.6",

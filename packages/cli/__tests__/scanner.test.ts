@@ -268,6 +268,116 @@ export async function processAll(items) {
     ]));
   });
 
+  it('detects quadratic work and repeated linear scans in JavaScript and Python', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'complexity.ts'), `export function correlate(orders, users, scores) {
+  for (const order of orders) {
+    for (const user of users) consume(order, user);
+    users.find(user => user.id === order.userId);
+    scores.sort((a, b) => b - a);
+  }
+}
+`);
+    fs.writeFileSync(path.join(directory, 'src', 'complexity.py'), `def correlate(orders, users, scores):
+    for order in orders:
+        for user in users:
+            consume(order, user)
+        if order.user_id in user_ids:
+            consume(order)
+        sorted(scores)
+`);
+
+    const report = scanProject(directory, 'test');
+    for (const file of ['src/complexity.ts', 'src/complexity.py']) {
+      const rules = report.findings.filter(item => item.file === file).map(item => item.ruleId);
+      expect(rules).toEqual(expect.arrayContaining([
+        'code/quadratic-nested-iteration',
+        'code/linear-search-in-loop',
+        'code/repeated-sort-in-loop'
+      ]));
+    }
+  });
+
+  it('does not label indexed lookups or statically bounded loops as quadratic', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'indexed.ts'), `export function correlate(orders, usersById, allowedIds) {
+  for (const order of orders) {
+    usersById.get(order.userId);
+    allowedIds.has(order.userId);
+  }
+  for (let row = 0; row < 10; row++) {
+    for (let column = 0; column < 10; column++) consume(row, column);
+  }
+}
+`);
+    fs.writeFileSync(path.join(directory, 'src', 'indexed.py'), `def correlate(orders, users_by_id, allowed_ids_set):
+    for order in orders:
+        users_by_id.get(order.user_id)
+        if order.user_id in allowed_ids_set:
+            consume(order)
+    for row in range(10):
+        for column in range(10):
+            consume(row, column)
+`);
+
+    const findings = scanProject(directory, 'test').findings.filter(item => item.file === 'src/indexed.ts' || item.file === 'src/indexed.py');
+    expect(findings.filter(item => item.ruleId.startsWith('code/quadratic') || item.ruleId === 'code/linear-search-in-loop')).toHaveLength(0);
+  });
+
+  it('finds unbounded ORM reads and recognizes explicit limits', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'orm.ts'), `export async function load() {
+  const allUsers = await prisma.user.findMany({ where: { active: true } });
+  const page = await prisma.user.findMany({ take: 100, where: { active: true } });
+  const allEvents = await Event.find({ active: true });
+  const eventPage = await Event.find({ active: true }).limit(100);
+  return { allUsers, page, allEvents, eventPage };
+}
+`);
+    fs.writeFileSync(path.join(directory, 'src', 'orm.py'), `async def load(session):
+    all_users = session.query(User).all()
+    page = session.query(User).limit(100).all()
+    all_events = await session.execute(select(Event))
+    event_page = await session.execute(select(Event).limit(100))
+    return all_users, page, all_events, event_page
+`);
+
+    const findings = scanProject(directory, 'test').findings.filter(item => item.ruleId === 'query/unbounded-orm-read');
+    expect(findings.filter(item => item.file === 'src/orm.ts')).toHaveLength(2);
+    expect(findings.filter(item => item.file === 'src/orm.py')).toHaveLength(2);
+    expect(findings.every(item => item.confidence === 'MEDIUM')).toBe(true);
+  });
+
+  it('honors gitignore, velloxignore, config exclusions, and rule overrides', () => {
+    const directory = fixture();
+    for (const folder of ['ignored-git', 'ignored-vellox', 'ignored-config']) fs.mkdirSync(path.join(directory, folder));
+    const risky = 'async function load() { return prisma.user.findMany(); }\n';
+    fs.writeFileSync(path.join(directory, 'ignored-git', 'risk.ts'), risky);
+    fs.writeFileSync(path.join(directory, 'ignored-vellox', 'risk.ts'), risky);
+    fs.writeFileSync(path.join(directory, 'ignored-config', 'risk.ts'), risky);
+    fs.writeFileSync(path.join(directory, '.gitignore'), 'ignored-git/\n');
+    fs.writeFileSync(path.join(directory, '.velloxignore'), 'ignored-vellox/\n');
+    fs.writeFileSync(path.join(directory, 'src', 'configured.ts'), `async function load() {
+  const users = await prisma.user.findMany();
+  for (const item of items) scores.sort();
+  return users;
+}
+`);
+    fs.writeFileSync(path.join(directory, 'vellox.config.json'), JSON.stringify({
+      ignore: ['ignored-config/'],
+      rules: {
+        'code/repeated-sort-in-loop': false,
+        'query/unbounded-orm-read': 'MEDIUM'
+      },
+      budgets: { maxCritical: 0, maxHigh: 0, maxTotal: null, failOnSecrets: true }
+    }));
+
+    const report = scanProject(directory, 'test');
+    expect(report.findings.some(item => item.file?.startsWith('ignored-'))).toBe(false);
+    expect(report.findings.some(item => item.ruleId === 'code/repeated-sort-in-loop')).toBe(false);
+    expect(report.findings.find(item => item.file === 'src/configured.ts' && item.ruleId === 'query/unbounded-orm-read')?.severity).toBe('MEDIUM');
+  });
+
   it('does not warn on paced polling, explicit batches, or concurrency limiters', () => {
     const directory = fixture();
     fs.writeFileSync(path.join(directory, 'src', 'controlled.ts'), `async function poll() {

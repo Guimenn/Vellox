@@ -17,6 +17,7 @@ interface PythonNode {
 }
 
 const JS_LOOP_TYPES = new Set(['ForStatement', 'ForInStatement', 'ForOfStatement', 'WhileStatement', 'DoWhileStatement']);
+const JS_ITERATION_METHODS = new Set(['every', 'filter', 'flatMap', 'forEach', 'map', 'reduce', 'reduceRight', 'some']);
 const JS_FUNCTION_TYPES = new Set([
   'FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression',
   'ClassMethod', 'ClassPrivateMethod', 'ObjectMethod'
@@ -79,7 +80,8 @@ function isJavaScriptDatabaseCall(node: any, content: string): boolean {
   if (!databaseMethod) return false;
   if (/\b(?:prisma|sequelize|typeorm|mongoose|knex|database|connection|cursor|session|entitymanager|repository|repo|pool|db|transaction|trx|tx)\b/i.test(name)) return true;
   const root = name.split('.')[0] || '';
-  return /^[A-Z][A-Za-z0-9_$]*(?:Model)?$/.test(root) && /^(?:aggregate|count|create|deleteMany|deleteOne|find|findById|findOne|insertMany|updateMany|updateOne)$/i.test(method);
+  return /^[A-Z][A-Za-z0-9_$]*(?:Model)?$/.test(root) && !/^[A-Z0-9_$]+$/.test(root)
+    && /^(?:aggregate|count|create|deleteMany|deleteOne|find|findById|findOne|insertMany|updateMany|updateOne)$/i.test(method);
 }
 
 function isTransactionCall(name: string): boolean {
@@ -138,7 +140,97 @@ function boundedCollection(node: any, content: string): boolean {
 }
 
 function structuralFinding(input: VelloxFindingInput): VelloxFindingInput {
-  return input;
+  return { confidence: 'HIGH', ...input };
+}
+
+function nearestJavaScriptIteration(ancestors: any[], content: string, position?: number): any | undefined {
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const candidate = ancestors[index];
+    if (JS_LOOP_TYPES.has(candidate?.type)) {
+      if (position === undefined || typeof candidate.body?.start !== 'number' || position >= candidate.body.start) return candidate;
+      continue;
+    }
+    if (JS_FUNCTION_TYPES.has(candidate?.type)) {
+      const owner = ancestors[index - 1];
+      if ((owner?.type === 'CallExpression' || owner?.type === 'OptionalCallExpression')
+        && owner.arguments?.includes(candidate)
+        && JS_ITERATION_METHODS.has(jsProperty(owner, content))) return owner;
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function staticallyBoundedJavaScriptIteration(node: any, content: string): boolean {
+  if (!node) return false;
+  const text = typeof node.start === 'number' && typeof node.end === 'number' ? content.slice(node.start, node.end) : '';
+  if ((node.type === 'CallExpression' || node.type === 'OptionalCallExpression') && boundedCollection(node.callee?.object, content)) return true;
+  if (node.type === 'ForOfStatement' && node.right?.type === 'ArrayExpression' && (node.right.elements?.length || 0) <= 100) return true;
+  if (node.type === 'ForStatement' && /(?:<|<=)\s*(?:[1-9]|[1-9]\d|100)\b/.test(text.slice(0, Math.max(0, text.indexOf(')') + 1)))) return true;
+  return false;
+}
+
+interface JavaScriptIterationDescriptor {
+  item: string;
+  collectionNode: any;
+  collection: string;
+  body: string;
+}
+
+function javascriptIterationDescriptor(node: any, content: string): JavaScriptIterationDescriptor | undefined {
+  if (node?.type === 'ForOfStatement' || node?.type === 'ForInStatement') {
+    const left = node.left?.type === 'VariableDeclaration' ? node.left.declarations?.[0]?.id : node.left;
+    const item = callName(left, content);
+    const collection = callName(node.right, content);
+    const body = typeof node.body?.start === 'number' && typeof node.body?.end === 'number' ? content.slice(node.body.start, node.body.end) : '';
+    return item && collection ? { item, collectionNode: node.right, collection, body } : undefined;
+  }
+  if (node?.type === 'CallExpression' || node?.type === 'OptionalCallExpression') {
+    const callback = node.arguments?.find((argument: any) => JS_FUNCTION_TYPES.has(argument?.type));
+    const item = callName(callback?.params?.[0], content);
+    const collectionNode = node.callee?.object;
+    const collection = callName(collectionNode, content);
+    const body = typeof callback?.body?.start === 'number' && typeof callback?.body?.end === 'number' ? content.slice(callback.body.start, callback.body.end) : '';
+    return item && collection ? { item, collectionNode, collection, body } : undefined;
+  }
+  return undefined;
+}
+
+function wordAppears(text: string, word: string): boolean {
+  return new RegExp(`\\b${word.replace(/[$()*+.?[\\\]^{|}]/g, '\\$&')}\\b`).test(text);
+}
+
+function looksLikeQuadraticJavaScriptJoin(inner: any, outer: any, content: string): boolean {
+  const innerDescriptor = javascriptIterationDescriptor(inner, content);
+  const outerDescriptor = javascriptIterationDescriptor(outer, content);
+  if (!innerDescriptor || !outerDescriptor) return false;
+  if (!likelyJavaScriptCollection(innerDescriptor.collectionNode, content)
+    || !likelyJavaScriptCollection(outerDescriptor.collectionNode, content)) return false;
+  if (/(?:matchAll|split|Object\.(?:entries|keys|values))\s*\(/.test(innerDescriptor.collection)
+    || /^[A-Z][A-Z0-9_]*$/.test(innerDescriptor.collection)) return false;
+  return wordAppears(innerDescriptor.body, innerDescriptor.item) && wordAppears(innerDescriptor.body, outerDescriptor.item);
+}
+
+function javascriptContainerText(node: any, ancestors: any[], content: string): string {
+  const container = [...ancestors].reverse().find(candidate => /(?:Statement|Declaration)$/.test(candidate?.type || '')) || node;
+  return typeof container.start === 'number' && typeof container.end === 'number'
+    ? content.slice(container.start, container.end)
+    : '';
+}
+
+function likelyJavaScriptCollection(node: any, content: string): boolean {
+  if (node?.type === 'ArrayExpression' || node?.type === 'NewExpression' && callName(node.callee, content) === 'Array') return true;
+  const name = callName(node, content).split('.').at(-1) || '';
+  return /(?:array|collection|entries|ids|items|list|records|results|rows|users|orders|products|events|members|permissions|roles|values)$/i.test(name);
+}
+
+function isUnboundedJavaScriptOrmRead(node: any, ancestors: any[], content: string): boolean {
+  if (!isJavaScriptDatabaseCall(node, content) || nearestJavaScriptIteration(ancestors, content, node.start)) return false;
+  const name = callName(node.callee, content);
+  const method = name.split('.').at(-1) || '';
+  if (!/^(?:find|findAll|findMany)$/i.test(method)) return false;
+  const container = javascriptContainerText(node, ancestors, content);
+  return !/(?:\b(?:limit|take)\s*:|\.(?:limit|take|slice)\s*\()/i.test(container);
 }
 
 export function scanJavaScriptStructure(content: string, relativeFile: string): StructuralScanResult {
@@ -166,6 +258,16 @@ export function scanJavaScriptStructure(content: string, relativeFile: string): 
   const walk = (node: any, ancestors: any[] = [], parent?: any): void => {
     const line = node.loc?.start?.line || (typeof node.start === 'number' ? lineAt(content, node.start) : 1);
     if (JS_LOOP_TYPES.has(node.type) && !ignoredAt(lines, line) && !intentionalLoopContext(lines, line)) {
+      const outerIteration = nearestJavaScriptIteration(ancestors, content);
+      if (outerIteration && !staticallyBoundedJavaScriptIteration(node, content) && !staticallyBoundedJavaScriptIteration(outerIteration, content)
+        && looksLikeQuadraticJavaScriptJoin(node, outerIteration, content)) {
+        findings.push(structuralFinding({
+          ruleId: 'code/quadratic-nested-iteration', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
+          title: 'Nested iteration can grow quadratically', evidence: sourceLine(content, line),
+          recommendation: 'Index one collection with a Map/Set or replace the nested scan with a single-pass join.',
+          file: relativeFile, line, metadata: { parser: 'babel', outerLoopStart: outerIteration.loc?.start?.line || line }
+        }));
+      }
       const signals = collectJavaScriptLoopSignals(node, content);
       const loopText = typeof node.start === 'number' && typeof node.end === 'number' ? content.slice(node.start, node.end) : '';
       const boundedBatch = /\b(?:batch|batches|chunk|chunks|lote|lotes|pageItems|window)\b/i.test(loopText)
@@ -201,6 +303,40 @@ export function scanJavaScriptStructure(content: string, relativeFile: string): 
     if ((node.type === 'CallExpression' || node.type === 'OptionalCallExpression') && !ignoredAt(lines, line)) {
       const property = jsProperty(node, content);
       const callback = node.arguments?.find((argument: any) => JS_FUNCTION_TYPES.has(argument?.type));
+      const repeatedBy = nearestJavaScriptIteration(ancestors, content, node.start);
+      const databaseCall = isJavaScriptDatabaseCall(node, content);
+
+      if (repeatedBy && !staticallyBoundedJavaScriptIteration(repeatedBy, content)
+        && !boundedCollection(node.callee?.object, content)
+        && /^(?:every|flatMap|forEach|map|reduce|reduceRight)$/.test(property)
+        && looksLikeQuadraticJavaScriptJoin(node, repeatedBy, content)) {
+        findings.push(structuralFinding({
+          ruleId: 'code/quadratic-nested-iteration', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
+          title: 'Nested collection pass can grow quadratically', evidence: sourceLine(content, line),
+          recommendation: 'Pre-index the inner collection or combine both passes into a single linear traversal.',
+          file: relativeFile, line, metadata: { parser: 'babel', pattern: property }
+        }));
+      }
+
+      const linearMethod = /^(?:find|findIndex|includes|indexOf|some)$/.test(property);
+      const smallLiteral = node.callee?.object?.type === 'ArrayExpression' && (node.callee.object.elements?.length || 0) <= 100;
+      if (repeatedBy && linearMethod && !smallLiteral && !databaseCall && likelyJavaScriptCollection(node.callee?.object, content)) {
+        findings.push(structuralFinding({
+          ruleId: 'code/linear-search-in-loop', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
+          title: 'Linear collection lookup is repeated inside an iteration', evidence: sourceLine(content, line),
+          recommendation: 'Build a Map or Set once before the loop so each lookup is constant-time.',
+          file: relativeFile, line, metadata: { parser: 'babel', method: property }
+        }));
+      }
+
+      if (repeatedBy && property === 'sort') {
+        findings.push(structuralFinding({
+          ruleId: 'code/repeated-sort-in-loop', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
+          title: 'Collection is sorted repeatedly inside an iteration', evidence: sourceLine(content, line),
+          recommendation: 'Sort once before the loop or maintain an indexed structure instead of repeating O(n log n) work.',
+          file: relativeFile, line, metadata: { parser: 'babel', method: 'sort' }
+        }));
+      }
       if (property === 'forEach' && callback?.async) {
         findings.push(structuralFinding({
           ruleId: 'code/async-foreach', severity: 'HIGH', category: 'code',
@@ -240,7 +376,7 @@ export function scanJavaScriptStructure(content: string, relativeFile: string): 
         }
       }
 
-      if (isJavaScriptDatabaseCall(node, content)) {
+      if (databaseCall) {
         const query = node.arguments?.[0];
         const dynamic = query?.type === 'BinaryExpression'
           || (query?.type === 'TemplateLiteral' && (query.expressions?.length || 0) > 0);
@@ -253,6 +389,15 @@ export function scanJavaScriptStructure(content: string, relativeFile: string): 
             file: relativeFile, line, metadata: { parser: 'babel', call: name }
           }));
         }
+      }
+
+      if (isUnboundedJavaScriptOrmRead(node, ancestors, content)) {
+        findings.push(structuralFinding({
+          ruleId: 'query/unbounded-orm-read', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'query',
+          title: 'ORM collection read has no explicit bound', evidence: sourceLine(content, line),
+          recommendation: 'Add cursor/keyset pagination or a measured take/limit before materializing the result set.',
+          file: relativeFile, line, metadata: { parser: 'babel', call: name }
+        }));
       }
 
       const blocking = /(?:^|\.)(?:appendFileSync|execFileSync|execSync|pbkdf2Sync|readFileSync|readdirSync|scryptSync|spawnSync|statSync|writeFileSync|writeFileSync|wait)$/i.test(name);
@@ -287,8 +432,8 @@ function pythonHasSyntaxError(node: PythonNode): boolean {
 }
 
 function pythonCallName(node: PythonNode, content: string): string {
-  const text = content.slice(node.from, node.to);
-  return text.slice(0, Math.max(0, text.indexOf('('))).trim();
+  const callee = node.firstChild;
+  return callee ? content.slice(callee.from, callee.to).trim() : '';
 }
 
 function isPythonDatabaseCall(node: PythonNode, content: string): boolean {
@@ -322,6 +467,63 @@ function nearestPythonFunction(ancestors: PythonNode[]): PythonNode | undefined 
   return [...ancestors].reverse().find(node => node.name === 'FunctionDefinition');
 }
 
+function nearestPythonLoop(ancestors: PythonNode[], position?: number): PythonNode | undefined {
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const candidate = ancestors[index]!;
+    if (PYTHON_LOOP_TYPES.has(candidate.name)) {
+      const body = pythonChildren(candidate).find(child => child.name === 'Body');
+      if (position === undefined || !body || position >= body.from) return candidate;
+      continue;
+    }
+    if (candidate.name === 'FunctionDefinition' || candidate.name === 'LambdaExpression') return undefined;
+  }
+  return undefined;
+}
+
+function staticallyBoundedPythonLoop(node: PythonNode, content: string): boolean {
+  const header = content.slice(node.from, Math.min(node.to, content.indexOf(':', node.from) + 1));
+  const range = /\brange\s*\(\s*(?:[1-9]|[1-9]\d|100)\s*\)/.test(header);
+  const literal = /\bin\s*(?:\[[^\]]{0,300}\]|\([^)]{0,300}\))\s*:/.test(header);
+  return range || literal;
+}
+
+function looksLikeQuadraticPythonJoin(inner: PythonNode, outer: PythonNode, content: string): boolean {
+  const descriptor = (node: PythonNode): { item: string; collection: string; body: string } | undefined => {
+    const loop = content.slice(node.from, node.to);
+    const header = loop.slice(0, Math.max(0, loop.indexOf(':')));
+    const match = /^\s*for\s+([A-Za-z_]\w*)\s+in\s+([A-Za-z_]\w*)\s*$/.exec(header);
+    return match ? { item: match[1]!, collection: match[2]!, body: loop.slice(header.length + 1) } : undefined;
+  };
+  const innerDescriptor = descriptor(inner);
+  const outerDescriptor = descriptor(outer);
+  if (!innerDescriptor || !outerDescriptor) return false;
+  if (!likelyPythonLinearCollection(innerDescriptor.collection) || !likelyPythonLinearCollection(outerDescriptor.collection)) return false;
+  return wordAppears(innerDescriptor.body, innerDescriptor.item) && wordAppears(innerDescriptor.body, outerDescriptor.item);
+}
+
+function pythonContainerText(node: PythonNode, ancestors: PythonNode[], content: string): string {
+  const container = [...ancestors].reverse().find(candidate => /(?:Statement|Definition)$/.test(candidate.name)) || node;
+  return content.slice(container.from, container.to);
+}
+
+function likelyPythonLinearCollection(name: string): boolean {
+  return /(?:_array|_collection|_entries|_ids|_items|_list|_records|_results|_rows|_users|_orders|_products|_events|_members|_permissions|_roles|_values|arrays?|collections?|entries|ids|items|lists?|records?|results?|rows|users|orders|products|events|members|permissions|roles|values)$/i.test(name)
+    && !/(?:_set|_map|_dict|sets?|maps?|dicts?)$/i.test(name);
+}
+
+function isUnboundedPythonOrmRead(node: PythonNode, ancestors: PythonNode[], content: string): boolean {
+  if (!isPythonDatabaseCall(node, content) || nearestPythonLoop(ancestors, node.from)) return false;
+  const name = pythonCallName(node, content);
+  const method = name.match(/\.([A-Za-z_]\w*)\s*$/)?.[1] || '';
+  const container = pythonContainerText(node, ancestors, content);
+  const collectionRead = /^(?:all|filter|find|find_many)$/i.test(method)
+    || /^(?:execute|scalar|scalars)$/i.test(method) && /\bselect\s*\(/i.test(container);
+  if (!collectionRead) return false;
+  if (/\b(?:func\.)?(?:count|min|max|avg|sum)\s*\(/i.test(container)) return false;
+  return !/(?:\.limit\s*\(|\[\s*:\s*\d+\s*\]|\.(?:first|one|one_or_none)\s*\(|\b(?:take|limit)\s*=)/i.test(container)
+    && !/(?:filter|filter_by)\s*\([^)]*\bid\s*(?:==|=)/i.test(container);
+}
+
 export function scanPythonStructure(content: string, relativeFile: string): StructuralScanResult {
   const findings: VelloxFindingInput[] = [];
   const lines = content.split('\n');
@@ -336,6 +538,16 @@ export function scanPythonStructure(content: string, relativeFile: string): Stru
   const walk = (node: PythonNode, ancestors: PythonNode[] = []): void => {
     const line = lineAt(content, node.from);
     if (PYTHON_LOOP_TYPES.has(node.name) && !ignoredAt(lines, line) && !intentionalLoopContext(lines, line)) {
+      const outerLoop = nearestPythonLoop(ancestors);
+      if (outerLoop && !staticallyBoundedPythonLoop(node, content) && !staticallyBoundedPythonLoop(outerLoop, content)
+        && looksLikeQuadraticPythonJoin(node, outerLoop, content)) {
+        findings.push(structuralFinding({
+          ruleId: 'code/quadratic-nested-iteration', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
+          title: 'Nested iteration can grow quadratically', evidence: sourceLine(content, line),
+          recommendation: 'Index one collection with a dict/set or replace the nested scan with a single-pass join.',
+          file: relativeFile, line, metadata: { parser: 'lezer-python', outerLoopStart: lineAt(content, outerLoop.from) }
+        }));
+      }
       const signals = collectPythonLoopSignals(node, content);
       const signal = signals.transactionNode || signals.queryNode || (!signals.pacing ? signals.awaitNode : undefined);
       if (signal) {
@@ -366,6 +578,29 @@ export function scanPythonStructure(content: string, relativeFile: string): Stru
     if (node.name === 'CallExpression' && !ignoredAt(lines, line)) {
       const name = pythonCallName(node, content);
       const callText = content.slice(node.from, node.to);
+      const repeatedBy = nearestPythonLoop(ancestors, node.from);
+      const databaseCall = isPythonDatabaseCall(node, content);
+
+      if (repeatedBy && !staticallyBoundedPythonLoop(repeatedBy, content)) {
+        const method = name.match(/\.([A-Za-z_]\w*)\s*$/)?.[1] || name;
+        const receiver = name.includes('.') ? name.slice(0, name.lastIndexOf('.')).split('.').at(-1) || '' : '';
+        if (/^(?:count|index)$/.test(method) && likelyPythonLinearCollection(receiver) && !databaseCall) {
+          findings.push(structuralFinding({
+            ruleId: 'code/linear-search-in-loop', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
+            title: 'Linear collection lookup is repeated inside a loop', evidence: sourceLine(content, line),
+            recommendation: 'Build a dict or set once before the loop so each lookup is constant-time.',
+            file: relativeFile, line, metadata: { parser: 'lezer-python', method }
+          }));
+        }
+        if (name === 'sorted' || method === 'sort') {
+          findings.push(structuralFinding({
+            ruleId: 'code/repeated-sort-in-loop', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
+            title: 'Collection is sorted repeatedly inside a loop', evidence: sourceLine(content, line),
+            recommendation: 'Sort once before the loop or maintain an indexed structure instead of repeating O(n log n) work.',
+            file: relativeFile, line, metadata: { parser: 'lezer-python', method: name === 'sorted' ? 'sorted' : 'sort' }
+          }));
+        }
+      }
       if (/^(?:asyncio\.)?gather$/i.test(name) && /\bfor\b[\s\S]*\bin\b|\*\s*(?!batch|chunk|page|window)\w+/i.test(callText)) {
         findings.push(structuralFinding({
           ruleId: 'code/unbounded-async-fanout', severity: 'HIGH', category: 'code',
@@ -380,7 +615,7 @@ export function scanPythonStructure(content: string, relativeFile: string): Stru
       const awaited = ancestors.some(ancestor => ancestor.name === 'AwaitExpression');
       const insideLoop = ancestors.some(ancestor => PYTHON_LOOP_TYPES.has(ancestor.name));
       const blockingIo = /^(?:requests\.(?:delete|get|head|options|patch|post|put)|time\.sleep|subprocess\.(?:call|check_call|check_output|run)|os\.system|urllib\.request\.urlopen)$/i.test(name);
-      const blockingDatabase = isPythonDatabaseCall(node, content);
+      const blockingDatabase = databaseCall;
       if (blockingDatabase && /\(\s*(?:f["']|["'][^"']*["']\s*(?:\+|%)|[^)]*\.format\s*\()/i.test(callText)) {
         findings.push(structuralFinding({
           ruleId: 'query/dynamic-sql-construction', severity: 'HIGH', category: 'query',
@@ -398,6 +633,29 @@ export function scanPythonStructure(content: string, relativeFile: string): Stru
             ? 'Use the async database driver/session or isolate the blocking work from the event loop.'
             : 'Use an async client/API or run the blocking operation in a bounded worker thread.',
           file: relativeFile, line, metadata: { parser: 'lezer-python', call: name }
+        }));
+      }
+
+      if (isUnboundedPythonOrmRead(node, ancestors, content)) {
+        findings.push(structuralFinding({
+          ruleId: 'query/unbounded-orm-read', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'query',
+          title: 'ORM collection read has no explicit bound', evidence: sourceLine(content, line),
+          recommendation: 'Add cursor/keyset pagination or a measured limit before materializing the result set.',
+          file: relativeFile, line, metadata: { parser: 'lezer-python', call: name }
+        }));
+      }
+    }
+
+    if (node.name === 'BinaryExpression' && !ignoredAt(lines, line)) {
+      const repeatedBy = nearestPythonLoop(ancestors, node.from);
+      const expression = content.slice(node.from, node.to);
+      const membership = /^(.+?)\s+(?:not\s+)?in\s+([A-Za-z_]\w*)\s*$/.exec(expression);
+      if (repeatedBy && membership && likelyPythonLinearCollection(membership[2] || '')) {
+        findings.push(structuralFinding({
+          ruleId: 'code/linear-search-in-loop', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
+          title: 'Linear membership lookup is repeated inside a loop', evidence: sourceLine(content, line),
+          recommendation: 'Convert the lookup collection to a set once before the loop.',
+          file: relativeFile, line, metadata: { parser: 'lezer-python', method: 'in' }
         }));
       }
     }

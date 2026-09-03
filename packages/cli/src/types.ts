@@ -1,4 +1,5 @@
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+export type Confidence = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export type FindingCategory = 'security' | 'code' | 'database' | 'query' | 'infrastructure';
 
@@ -6,6 +7,7 @@ export interface VelloxFinding {
   fingerprint: string;
   ruleId: string;
   severity: Severity;
+  confidence?: Confidence;
   category: FindingCategory;
   title: string;
   evidence: string;
@@ -50,6 +52,8 @@ export interface VelloxBudgets {
 export interface VelloxConfig {
   reportPath?: string;
   baselinePath?: string;
+  ignore?: string[];
+  rules?: Record<string, false | Severity | { enabled?: boolean; severity?: Severity }>;
   budgets: VelloxBudgets;
 }
 

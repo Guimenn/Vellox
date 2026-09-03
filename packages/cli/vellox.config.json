@@ -1,6 +1,8 @@
 {
   "reportPath": ".vellox/report.json",
   "baselinePath": ".vellox/baseline.json",
+  "ignore": [],
+  "rules": {},
   "budgets": {
     "maxCritical": 0,
     "maxHigh": 0,
