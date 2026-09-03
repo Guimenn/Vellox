@@ -121,6 +121,8 @@ describe('published CLI behavior', () => {
     expect(run(['discover', fixture])).toContain('PostgreSQL');
     expect(run(['demo'])).toContain('real scanner');
     expect(run(['ai', 'SELECT * FROM users'])).toContain('Do not invent row counts');
+    expect(run(['rules', 'fan-out'])).toContain('code/unbounded-query-fanout');
+    expect(JSON.parse(run(['rules', 'explain/', '--format', 'json'])).length).toBe(5);
 
     const inline = run(['scan', 'SELECT * FROM users', '--format', 'json']);
     expect(JSON.parse(inline).findings.some((item: { ruleId: string }) => item.ruleId === 'query/select-star')).toBe(true);
@@ -140,7 +142,8 @@ describe('published CLI behavior', () => {
 
     const planPath = path.join(fixture, 'plan.json');
     fs.writeFileSync(planPath, JSON.stringify({ Plan: { 'Node Type': 'Seq Scan', 'Relation Name': 'users', 'Shared Hit Blocks': 9, 'Shared Read Blocks': 1 } }));
-    expect(run(['explain', planPath])).toContain('Sequential scans: 1');
+    expect(run(['explain', planPath])).toContain('sequentialScans: 1');
+    expect(JSON.parse(run(['explain', planPath, '--format', 'json'])).metrics.sequentialScans).toBe(1);
 
     const ddlPath = path.join(fixture, 'migration.sql');
     fs.writeFileSync(ddlPath, 'CREATE TABLE child (id UUID, parent_id UUID, FOREIGN KEY (parent_id) REFERENCES parent(id));');

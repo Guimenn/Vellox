@@ -522,7 +522,7 @@
       <div class="container">
         <div class="hero-grid">
           <div class="hero-main">
-            <a class="release-pill hero-reveal" href="https://www.npmjs.com/package/vellox" target="_blank" rel="noreferrer"><span id="npm-version">v0.5.0</span> Latest release on NPM ↗</a>
+            <a class="release-pill hero-reveal" href="https://www.npmjs.com/package/vellox" target="_blank" rel="noreferrer"><span id="npm-version">v0.6.0</span> Latest release on NPM ↗</a>
             <h1 class="hero-title" aria-label="Your cloud isn't expensive. Your code is.">
               <span class="line"><span>Your cloud isn’t</span></span>
               <span class="line"><span>expensive. <em>Your</em></span></span>
@@ -566,7 +566,7 @@
         <aside class="thesis-aside reveal-up"><span class="kicker">The actionability gap</span><p>Monitoring tools show the fire. Vellox connects the finding to evidence and refuses to invent impact it did not measure.</p></aside>
         <div>
           <h2 class="thesis-statement reveal-up"><span class="muted">A red dashboard isn’t an answer.</span> Your team needs the query, the root cause, and the fix — before the bill arrives.</h2>
-          <div class="thesis-foot reveal-up"><p><strong>From source to evidence.</strong><br />Parse JS/TS and Python structurally, inspect plain or embedded SQL, migrations, and ORM schemas without executing the application or contacting a database.</p><p><strong>From finding to action.</strong><br />Distinguish N+1 database work, discarded promises, blocking async code, unsafe fan-out, and expensive SQL with reviewable recommendations.</p></div>
+          <div class="thesis-foot reveal-up"><p><strong>From source to evidence.</strong><br />Parse JS/TS and Python structurally, follow local helper calls, and inspect SQL, migrations, ORM schemas, and PostgreSQL plans without executing the application.</p><p><strong>From finding to action.</strong><br />Distinguish N+1 database work, quadratic growth, query fan-out, blocking async code, and measured plan bottlenecks with reviewable recommendations.</p></div>
         </div>
       </div>
     </section>
@@ -642,7 +642,7 @@
       <div class="container">
         <div class="capability-head reveal-up"><div><span class="kicker">Built for the real stack</span><h2 class="section-heading">Deep enough for engineers. Clear enough for everyone.</h2></div></div>
         <div class="capability-grid">
-          <article class="capability-card large card-reveal"><span class="card-index">01 / STRUCTURAL INTELLIGENCE</span><div class="card-visual database-stack" aria-hidden="true"><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i></div><h3>See scaling risks where they are written.</h3><p>Parser-backed rules inspect JS/TS and Python for query loops, unbounded ORM reads, quadratic joins, repeated searches and sorts, discarded promises, blocking async code, and uncontrolled concurrency. Confidence stays explicit.</p></article>
+          <article class="capability-card large card-reveal"><span class="card-index">01 / STRUCTURAL INTELLIGENCE</span><div class="card-visual database-stack" aria-hidden="true"><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i><i class="db-ring"></i></div><h3>See scaling risks where they are written.</h3><p>Parser-backed rules follow same-file helpers in JS/TS and Python to expose N+1 calls, query fan-out, quadratic joins and collection growth, repeated searches and sorts, discarded promises, and blocking async code. Confidence stays explicit.</p></article>
           <article class="capability-card tall card-reveal"><span class="card-index">02 / LOCAL BY DESIGN</span><div class="card-visual shield-visual" aria-hidden="true"></div><h3>Your source stays on your machine.</h3><p>The CLI reads files and writes a local report. No daemon, account, database connection, container, or code execution.</p></article>
           <article class="capability-card third mini-card card-reveal"><span class="card-index">03 / EVIDENCE CONTRACT</span><h3>Use the same truth everywhere.</h3><p>Pretty output, JSON, Markdown, SARIF, baselines, and CI all consume the same findings.</p><div class="mini-chart" aria-hidden="true"><span style="--h:28%"></span><span style="--h:42%"></span><span style="--h:38%"></span><span style="--h:61%"></span><span style="--h:48%"></span><span style="--h:70%"></span><span style="--h:82%"></span><span style="--h:100%"></span></div></article>
           <article class="capability-card third mini-card card-reveal"><span class="card-index">04 / CODE + SQL</span><h3>Scan the paths that shape throughput.</h3><p>Structural rules for application code plus direct, embedded, and file-based SQL analysis.</p><div class="orm-list"><span>JS / TS</span><span>Python</span><span>SQL</span><span>Prisma</span><span>Drizzle</span><span>SQLAlchemy</span></div></article>
@@ -654,7 +654,7 @@
     <section class="section proof-section" id="benchmarks">
       <div class="container">
         <div class="proof-top"><div class="reveal-up"><span class="kicker">Measured, not marketed</span><h2 class="section-heading">Evidence in. Evidence out.</h2></div><p class="section-copy reveal-up">The scanner, reports, migrations, CI gate, and SARIF output now share one inspectable finding contract.</p></div>
-        <div class="proof-grid reveal-up"><article class="proof-stat"><span>Test suite</span><strong>123</strong><p>Workflow, safety, and positive/negative precision fixtures across JavaScript, TypeScript, Python, and SQL.</p></article><article class="proof-stat"><span>Code analysis</span><strong>AST+CST</strong><p>Real parsers distinguish nested structure, callbacks, loops, async boundaries, and ORM calls.</p></article><article class="proof-stat"><span>CI standard</span><strong>SARIF</strong><p>Findings map back to the exact source location.</p></article><article class="proof-stat"><span>Local runtime</span><strong>Node</strong><p>Even Python source is parsed locally without executing it or requiring a Python runtime.</p></article></div>
+        <div class="proof-grid reveal-up"><article class="proof-stat"><span>Test suite</span><strong>146</strong><p>Workflow, safety, execution-plan, and positive/negative precision fixtures across JavaScript, TypeScript, Python, and SQL.</p></article><article class="proof-stat"><span>Code analysis</span><strong>AST+CST</strong><p>Real parsers distinguish nested structure, callbacks, local call chains, async boundaries, and ORM calls.</p></article><article class="proof-stat"><span>Rule catalog</span><strong>55</strong><p>Every supported signal has an inspectable ID, severity, confidence, evidence, and action.</p></article><article class="proof-stat"><span>Local runtime</span><strong>Node</strong><p>Even Python source is parsed locally without executing it or requiring a Python runtime.</p></article></div>
         <div class="proof-note"><span>Run pnpm test and pnpm benchmark on your own hardware</span><span>Methodology available on GitHub ↗</span></div>
       </div>
     </section>

@@ -7,6 +7,7 @@ interface CorpusCase {
   source: string;
   expected?: string[];
   forbidden?: string[];
+  expectedConfidence?: Record<string, 'HIGH' | 'MEDIUM' | 'LOW'>;
 }
 
 const corpus: CorpusCase[] = [
@@ -16,9 +17,37 @@ const corpus: CorpusCase[] = [
     expected: ['code/query-in-loop']
   },
   {
+    name: 'JavaScript N+1 through a local helper', language: 'javascript',
+    source: 'async function loadOne(id) { return prisma.user.findUnique({ where: { id } }); }\nasync function load(ids) { for (const id of ids) await loadOne(id); }',
+    expected: ['code/query-in-loop'],
+    expectedConfidence: { 'code/query-in-loop': 'MEDIUM' }
+  },
+  {
+    name: 'JavaScript N+1 through transitive local helpers', language: 'javascript',
+    source: 'async function repository(id) { return prisma.user.findUnique({ where: { id } }); }\nasync function loadOne(id) { return repository(id); }\nasync function load(ids) { for (const id of ids) await loadOne(id); }',
+    expected: ['code/query-in-loop']
+  },
+  {
+    name: 'JavaScript harmless local helper in a loop', language: 'javascript',
+    source: 'function normalize(value) { return value.trim().toLowerCase(); }\nfunction load(items) { for (const item of items) normalize(item); }',
+    forbidden: ['code/query-in-loop']
+  },
+  {
+    name: 'JavaScript unbounded database promise fan-out', language: 'javascript',
+    source: 'async function load(ids) { return Promise.all(ids.map(id => prisma.user.findUnique({ where: { id } }))); }',
+    expected: ['code/unbounded-query-fanout'],
+    forbidden: ['code/unbounded-async-fanout']
+  },
+  {
+    name: 'JavaScript database promise fan-out through a local helper', language: 'javascript',
+    source: 'async function loadOne(id) { return prisma.user.findUnique({ where: { id } }); }\nasync function load(ids) { return Promise.all(ids.map(id => loadOne(id))); }',
+    expected: ['code/unbounded-query-fanout'],
+    forbidden: ['code/unbounded-async-fanout']
+  },
+  {
     name: 'JavaScript bounded batch', language: 'javascript',
     source: 'async function load(batches) { for (const batch of batches) await Promise.all(batch.map(id => prisma.user.findUnique({ where: { id } }))); }',
-    forbidden: ['code/query-in-loop', 'code/sequential-async-loop', 'code/unbounded-async-fanout', 'code/quadratic-nested-iteration']
+    forbidden: ['code/query-in-loop', 'code/sequential-async-loop', 'code/unbounded-async-fanout', 'code/unbounded-query-fanout', 'code/quadratic-nested-iteration']
   },
   {
     name: 'JavaScript async forEach', language: 'javascript',
@@ -46,6 +75,21 @@ const corpus: CorpusCase[] = [
     forbidden: ['code/linear-search-in-loop']
   },
   {
+    name: 'JavaScript array spread growth', language: 'javascript',
+    source: 'function copy(items) { let result = []; for (const item of items) result = [...result, item]; return result; }',
+    expected: ['code/quadratic-collection-growth']
+  },
+  {
+    name: 'JavaScript reduce spread growth', language: 'javascript',
+    source: 'function copy(items) { return items.reduce((result, item) => [...result, item], []); }',
+    expected: ['code/quadratic-collection-growth']
+  },
+  {
+    name: 'JavaScript mutable append', language: 'javascript',
+    source: 'function copy(items) { const result = []; for (const item of items) result.push(item); return result; }',
+    forbidden: ['code/quadratic-collection-growth']
+  },
+  {
     name: 'JavaScript nested collection passes', language: 'javascript',
     source: 'function join(orders, users) { orders.forEach(order => users.map(user => [order, user])); }',
     expected: ['code/quadratic-nested-iteration']
@@ -59,6 +103,39 @@ const corpus: CorpusCase[] = [
     name: 'Python query loop', language: 'python',
     source: 'def load(ids, session):\n    for user_id in ids:\n        session.execute(select(User).where(User.id == user_id))\n',
     expected: ['code/synchronous-query-loop']
+  },
+  {
+    name: 'Python query loop through a local helper', language: 'python',
+    source: 'def load_one(user_id):\n    return session.execute(select(User).where(User.id == user_id))\n\ndef load(ids):\n    for user_id in ids:\n        load_one(user_id)\n',
+    expected: ['code/synchronous-query-loop'],
+    expectedConfidence: { 'code/synchronous-query-loop': 'MEDIUM' }
+  },
+  {
+    name: 'Python query loop through transitive local helpers', language: 'python',
+    source: 'def repository(user_id):\n    return session.execute(select(User).where(User.id == user_id))\n\ndef load_one(user_id):\n    return repository(user_id)\n\ndef load(ids):\n    for user_id in ids:\n        load_one(user_id)\n',
+    expected: ['code/synchronous-query-loop']
+  },
+  {
+    name: 'Python harmless local helper in a loop', language: 'python',
+    source: 'def normalize(value):\n    return value.strip().lower()\n\ndef load(items):\n    for item in items:\n        normalize(item)\n',
+    forbidden: ['code/synchronous-query-loop']
+  },
+  {
+    name: 'Python unbounded database gather fan-out', language: 'python',
+    source: 'async def load(ids):\n    return await asyncio.gather(*(session.execute(select(User).where(User.id == user_id)) for user_id in ids))\n',
+    expected: ['code/unbounded-query-fanout'],
+    forbidden: ['code/unbounded-async-fanout']
+  },
+  {
+    name: 'Python database gather fan-out through a local helper', language: 'python',
+    source: 'async def load_one(user_id):\n    return await db.execute(select(User).where(User.id == user_id))\n\nasync def load(ids):\n    return await asyncio.gather(*(load_one(user_id) for user_id in ids))\n',
+    expected: ['code/unbounded-query-fanout'],
+    forbidden: ['code/unbounded-async-fanout']
+  },
+  {
+    name: 'Python bounded database gather batch', language: 'python',
+    source: 'async def load(batch):\n    return await asyncio.gather(*(session.execute(query) for query in batch))\n',
+    forbidden: ['code/unbounded-query-fanout', 'code/unbounded-async-fanout']
   },
   {
     name: 'Python paced polling', language: 'python',
@@ -84,6 +161,26 @@ const corpus: CorpusCase[] = [
     name: 'Python indexed set membership', language: 'python',
     source: 'def join(orders, user_ids_set):\n    for order in orders:\n        if order.user_id in user_ids_set:\n            consume(order)\n',
     forbidden: ['code/linear-search-in-loop']
+  },
+  {
+    name: 'Python list concat growth', language: 'python',
+    source: 'def copy(items):\n    result = []\n    for item in items:\n        result = result + [item]\n    return result\n',
+    expected: ['code/quadratic-collection-growth']
+  },
+  {
+    name: 'Python front insertion growth', language: 'python',
+    source: 'def copy(items):\n    result = []\n    for item in items:\n        result.insert(0, item)\n    return result\n',
+    expected: ['code/quadratic-collection-growth']
+  },
+  {
+    name: 'Python sum list flatten', language: 'python',
+    source: 'def flatten(chunks):\n    return sum(chunks, [])\n',
+    expected: ['code/quadratic-list-flatten']
+  },
+  {
+    name: 'Python linear append and flatten', language: 'python',
+    source: 'def copy(items):\n    result = []\n    for item in items:\n        result.append(item)\n    return [item for chunk in result for item in chunk]\n',
+    forbidden: ['code/quadratic-collection-growth', 'code/quadratic-list-flatten']
   }
 ];
 
@@ -98,6 +195,9 @@ describe('structural precision corpus', () => {
       expect(result.parsed).toBe(true);
       for (const rule of sample.expected || []) expect(rules).toContain(rule);
       for (const rule of sample.forbidden || []) expect(rules).not.toContain(rule);
+      for (const [rule, confidence] of Object.entries(sample.expectedConfidence || {})) {
+        expect(result.findings.find(finding => finding.ruleId === rule)?.confidence).toBe(confidence);
+      }
     });
   }
 });

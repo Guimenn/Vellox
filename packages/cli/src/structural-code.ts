@@ -106,8 +106,78 @@ function isPacingAwait(node: any, content: string): boolean {
   return /\b(?:aguardar|delay|pause|sleep|setTimeout|wait)\s*\(/i.test(content.slice(node.start, node.end));
 }
 
-function collectJavaScriptLoopSignals(loop: any, content: string): { awaitNode?: any; queryNode?: any; transactionNode?: any; pacing: boolean } {
-  const signals: { awaitNode?: any; queryNode?: any; transactionNode?: any; pacing: boolean } = { pacing: false };
+interface LoopSignals<Node> {
+  awaitNode?: Node;
+  queryNode?: Node;
+  transactionNode?: Node;
+  indirectQuery?: boolean;
+  pacing: boolean;
+}
+
+interface FunctionSummary<Node> {
+  node: Node;
+  aliases: string[];
+  calls: Set<string>;
+  directDatabase: boolean;
+}
+
+function javascriptFunctionAliases(node: any, parent: any, content: string): string[] {
+  if (node.type === 'FunctionDeclaration' && node.id?.name) return [node.id.name];
+  if ((node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') && parent?.type === 'VariableDeclarator') {
+    const name = callName(parent.id, content);
+    return name ? [name] : [];
+  }
+  if (node.type === 'ClassMethod' || node.type === 'ClassPrivateMethod' || node.type === 'ObjectMethod') {
+    const name = callName(node.key, content);
+    return name ? [name, `this.${name}`] : [];
+  }
+  return [];
+}
+
+function collectJavaScriptQueryFunctions(program: any, content: string): Set<string> {
+  const summaries: Array<FunctionSummary<any>> = [];
+  const collect = (node: any, parent?: any): void => {
+    if (JS_FUNCTION_TYPES.has(node?.type)) {
+      const aliases = javascriptFunctionAliases(node, parent, content);
+      if (aliases.length) {
+        const summary: FunctionSummary<any> = { node, aliases, calls: new Set(), directDatabase: false };
+        const inspect = (candidate: any, root = false): void => {
+          if (!candidate || (!root && JS_FUNCTION_TYPES.has(candidate.type))) return;
+          if (candidate.type === 'CallExpression' || candidate.type === 'OptionalCallExpression') {
+            if (isJavaScriptDatabaseCall(candidate, content)) summary.directDatabase = true;
+            else {
+              const name = callName(candidate.callee, content);
+              if (name) summary.calls.add(name);
+            }
+          }
+          for (const child of jsChildren(candidate)) inspect(child);
+        };
+        inspect(node.body, true);
+        summaries.push(summary);
+      }
+    }
+    for (const child of jsChildren(node)) collect(child, node);
+  };
+  collect(program);
+
+  const queryFunctions = new Set<string>();
+  for (const summary of summaries) if (summary.directDatabase) summary.aliases.forEach(alias => queryFunctions.add(alias));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const summary of summaries) {
+      if (summary.aliases.some(alias => queryFunctions.has(alias))) continue;
+      if ([...summary.calls].some(name => queryFunctions.has(name))) {
+        summary.aliases.forEach(alias => queryFunctions.add(alias));
+        changed = true;
+      }
+    }
+  }
+  return queryFunctions;
+}
+
+function collectJavaScriptLoopSignals(loop: any, content: string, queryFunctions: Set<string>): LoopSignals<any> {
+  const signals: LoopSignals<any> = { pacing: false };
   const visit = (node: any, root = false): void => {
     if (!node || (!root && (JS_LOOP_TYPES.has(node.type) || JS_FUNCTION_TYPES.has(node.type)))) return;
     if (node.type === 'AwaitExpression') {
@@ -118,11 +188,32 @@ function collectJavaScriptLoopSignals(loop: any, content: string): { awaitNode?:
       const name = callName(node.callee, content);
       if (!signals.transactionNode && isTransactionCall(name)) signals.transactionNode = node;
       if (!signals.queryNode && isJavaScriptDatabaseCall(node, content)) signals.queryNode = node;
+      else if (!signals.queryNode && queryFunctions.has(name)) {
+        signals.queryNode = node;
+        signals.indirectQuery = true;
+      }
     }
     for (const child of jsChildren(node)) visit(child);
   };
   visit(loop.body, true);
   return signals;
+}
+
+function javascriptFunctionContainsQuery(node: any, content: string, queryFunctions: Set<string>): boolean {
+  let found = false;
+  const visit = (candidate: any, root = false): void => {
+    if (!candidate || found || (!root && JS_FUNCTION_TYPES.has(candidate.type))) return;
+    if (candidate.type === 'CallExpression' || candidate.type === 'OptionalCallExpression') {
+      const name = callName(candidate.callee, content);
+      if (isJavaScriptDatabaseCall(candidate, content) || queryFunctions.has(name)) {
+        found = true;
+        return;
+      }
+    }
+    for (const child of jsChildren(candidate)) visit(child);
+  };
+  visit(node, true);
+  return found;
 }
 
 function nearestJavaScriptFunction(ancestors: any[]): any | undefined {
@@ -233,6 +324,48 @@ function isUnboundedJavaScriptOrmRead(node: any, ancestors: any[], content: stri
   return !/(?:\b(?:limit|take)\s*:|\.(?:limit|take|slice)\s*\()/i.test(container);
 }
 
+function sameJavaScriptExpression(left: any, right: any, content: string): boolean {
+  const leftName = callName(left, content);
+  const rightName = callName(right, content);
+  return Boolean(leftName && rightName && leftName === rightName);
+}
+
+function javascriptCopyOnGrow(node: any, ancestors: any[], content: string): string | undefined {
+  const repeatedBy = nearestJavaScriptIteration(ancestors, content, node.start);
+  if (!repeatedBy || staticallyBoundedJavaScriptIteration(repeatedBy, content)) return undefined;
+
+  if (node.type === 'AssignmentExpression' && node.operator === '=') {
+    const right = node.right;
+    const spreads = right?.type === 'ArrayExpression'
+      ? right.elements?.filter((element: any) => element?.type === 'SpreadElement') || []
+      : right?.type === 'ObjectExpression'
+        ? right.properties?.filter((property: any) => property?.type === 'SpreadElement') || []
+        : [];
+    if (spreads.some((spread: any) => sameJavaScriptExpression(node.left, spread.argument, content))) return 'self-spread';
+    if (right?.type === 'CallExpression' || right?.type === 'OptionalCallExpression') {
+      if (jsProperty(right, content) === 'concat' && sameJavaScriptExpression(node.left, right.callee?.object, content)) return 'self-concat';
+    }
+  }
+
+  if ((node.type === 'CallExpression' || node.type === 'OptionalCallExpression')) {
+    const method = jsProperty(node, content);
+    if (method === 'unshift') return 'front-insert';
+    if (method === 'splice' && node.arguments?.[0]?.type === 'NumericLiteral' && node.arguments[0].value === 0) return 'front-splice';
+  }
+
+  if (node.type === 'ArrayExpression' || node.type === 'ObjectExpression') {
+    const iteration = nearestJavaScriptIteration(ancestors, content, node.start);
+    if (jsProperty(iteration, content) !== 'reduce') return undefined;
+    const callback = iteration.arguments?.find((argument: any) => JS_FUNCTION_TYPES.has(argument?.type));
+    const accumulator = callback?.params?.[0];
+    const spreads = node.type === 'ArrayExpression'
+      ? node.elements?.filter((element: any) => element?.type === 'SpreadElement') || []
+      : node.properties?.filter((property: any) => property?.type === 'SpreadElement') || [];
+    if (spreads.some((spread: any) => sameJavaScriptExpression(accumulator, spread.argument, content))) return 'reduce-spread';
+  }
+  return undefined;
+}
+
 export function scanJavaScriptStructure(content: string, relativeFile: string): StructuralScanResult {
   const findings: VelloxFindingInput[] = [];
   const lines = content.split('\n');
@@ -254,9 +387,21 @@ export function scanJavaScriptStructure(content: string, relativeFile: string): 
   } catch {
     return { findings, parsed: false };
   }
+  const queryFunctions = collectJavaScriptQueryFunctions(program, content);
 
   const walk = (node: any, ancestors: any[] = [], parent?: any): void => {
     const line = node.loc?.start?.line || (typeof node.start === 'number' ? lineAt(content, node.start) : 1);
+    const growthPattern = !ignoredAt(lines, line) ? javascriptCopyOnGrow(node, ancestors, content) : undefined;
+    if (growthPattern) {
+      findings.push(structuralFinding({
+        ruleId: 'code/quadratic-collection-growth', severity: 'MEDIUM', category: 'code',
+        title: 'Collection is copied while it grows inside an iteration', evidence: sourceLine(content, line),
+        recommendation: growthPattern.startsWith('front-')
+          ? 'Append in iteration order and reverse once if needed; inserting at index zero shifts the existing collection every time.'
+          : 'Mutate a local accumulator with push/Object.assign, or collect entries and construct the final value once after the iteration.',
+        file: relativeFile, line, metadata: { parser: 'babel', pattern: growthPattern }
+      }));
+    }
     if (JS_LOOP_TYPES.has(node.type) && !ignoredAt(lines, line) && !intentionalLoopContext(lines, line)) {
       const outerIteration = nearestJavaScriptIteration(ancestors, content);
       if (outerIteration && !staticallyBoundedJavaScriptIteration(node, content) && !staticallyBoundedJavaScriptIteration(outerIteration, content)
@@ -268,7 +413,7 @@ export function scanJavaScriptStructure(content: string, relativeFile: string): 
           file: relativeFile, line, metadata: { parser: 'babel', outerLoopStart: outerIteration.loc?.start?.line || line }
         }));
       }
-      const signals = collectJavaScriptLoopSignals(node, content);
+      const signals = collectJavaScriptLoopSignals(node, content, queryFunctions);
       const loopText = typeof node.start === 'number' && typeof node.end === 'number' ? content.slice(node.start, node.end) : '';
       const boundedBatch = /\b(?:batch|batches|chunk|chunks|lote|lotes|pageItems|window)\b/i.test(loopText)
         && /Promise\.(?:all|allSettled)\s*\(/.test(loopText);
@@ -285,8 +430,11 @@ export function scanJavaScriptStructure(content: string, relativeFile: string): 
         findings.push(structuralFinding({
           ruleId: transaction ? 'code/transaction-in-loop' : query ? 'code/query-in-loop' : 'code/sequential-async-loop',
           severity: hotspotSeverity(relativeFile),
+          confidence: signals.indirectQuery ? 'MEDIUM' : 'HIGH',
           category: 'code',
-          title: transaction ? 'Transaction boundary inside a loop' : query ? 'Database operation inside a loop' : 'Sequential asynchronous work inside a loop',
+          title: transaction ? 'Transaction boundary inside a loop' : query
+            ? signals.indirectQuery ? 'Function reaching the database is called inside a loop' : 'Database operation inside a loop'
+            : 'Sequential asynchronous work inside a loop',
           evidence: sourceLine(content, signalLine),
           recommendation: transaction
             ? 'Move the transaction boundary outside the loop and use a bulk operation where semantics allow it.'
@@ -295,7 +443,7 @@ export function scanJavaScriptStructure(content: string, relativeFile: string): 
               : 'Batch the operation or use measured, bounded concurrency instead of awaiting every iteration.',
           file: relativeFile,
           line: signalLine,
-          metadata: { parser: 'babel', loopStart: line, pattern: transaction ? 'transaction' : query ? 'database' : 'await' }
+          metadata: { parser: 'babel', loopStart: line, pattern: transaction ? 'transaction' : query ? signals.indirectQuery ? 'indirect-database' : 'database' : 'await' }
         }));
       }
     }
@@ -366,12 +514,16 @@ export function scanJavaScriptStructure(content: string, relativeFile: string): 
           : '';
         const explicitLimiter = /\b(?:limit|limiter|semaphore|workerPool|pool)\s*\(/i.test(mapText);
         if (mapCall && !boundedCollection(mapCall.callee?.object, content) && !explicitLimiter) {
+          const mapCallback = mapCall.arguments?.find((argument: any) => JS_FUNCTION_TYPES.has(argument?.type));
+          const queryFanout = Boolean(mapCallback && javascriptFunctionContainsQuery(mapCallback.body, content, queryFunctions));
           findings.push(structuralFinding({
-            ruleId: 'code/unbounded-async-fanout', severity: hotspotSeverity(relativeFile), category: 'code',
-            title: 'Promise fan-out has no concurrency bound',
+            ruleId: queryFanout ? 'code/unbounded-query-fanout' : 'code/unbounded-async-fanout', severity: hotspotSeverity(relativeFile), category: 'code',
+            title: queryFanout ? 'Database query fan-out has no concurrency bound' : 'Promise fan-out has no concurrency bound',
             evidence: sourceLine(content, line),
-            recommendation: 'Process measured batches or use a concurrency limiter to protect memory, sockets, and downstream services.',
-            file: relativeFile, line, metadata: { parser: 'babel', pattern: name }
+            recommendation: queryFanout
+              ? 'Cap database concurrency with measured batches or a limiter; prefer one bulk query when the data model allows it.'
+              : 'Process measured batches or use a concurrency limiter to protect memory, sockets, and downstream services.',
+            file: relativeFile, line, metadata: { parser: 'babel', pattern: name, database: queryFanout }
           }));
         }
       }
@@ -443,8 +595,56 @@ function isPythonDatabaseCall(node: PythonNode, content: string): boolean {
     && /(?:^|\.)(?:objects|query|session|cursor|connection|database|db|repository|repo|collection)\b/i.test(name);
 }
 
-function collectPythonLoopSignals(loop: PythonNode, content: string): { awaitNode?: PythonNode; queryNode?: PythonNode; transactionNode?: PythonNode; pacing: boolean } {
-  const signals: { awaitNode?: PythonNode; queryNode?: PythonNode; transactionNode?: PythonNode; pacing: boolean } = { pacing: false };
+function pythonFunctionAliases(node: PythonNode, content: string): string[] {
+  const header = content.slice(node.from, Math.min(node.to, content.indexOf(':', node.from) + 1));
+  const name = /\bdef\s+([A-Za-z_]\w*)\s*\(/.exec(header)?.[1];
+  return name ? [name, `self.${name}`, `cls.${name}`] : [];
+}
+
+function collectPythonQueryFunctions(root: PythonNode, content: string): Set<string> {
+  const summaries: Array<FunctionSummary<PythonNode>> = [];
+  const collect = (node: PythonNode): void => {
+    if (node.name === 'FunctionDefinition') {
+      const aliases = pythonFunctionAliases(node, content);
+      if (aliases.length) {
+        const summary: FunctionSummary<PythonNode> = { node, aliases, calls: new Set(), directDatabase: false };
+        const inspect = (candidate: PythonNode, rootNode = false): void => {
+          if (!rootNode && candidate.name === 'FunctionDefinition') return;
+          if (candidate.name === 'CallExpression') {
+            if (isPythonDatabaseCall(candidate, content)) summary.directDatabase = true;
+            else {
+              const name = pythonCallName(candidate, content);
+              if (name) summary.calls.add(name);
+            }
+          }
+          for (const child of pythonChildren(candidate)) inspect(child);
+        };
+        inspect(node, true);
+        summaries.push(summary);
+      }
+    }
+    for (const child of pythonChildren(node)) collect(child);
+  };
+  collect(root);
+
+  const queryFunctions = new Set<string>();
+  for (const summary of summaries) if (summary.directDatabase) summary.aliases.forEach(alias => queryFunctions.add(alias));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const summary of summaries) {
+      if (summary.aliases.some(alias => queryFunctions.has(alias))) continue;
+      if ([...summary.calls].some(name => queryFunctions.has(name))) {
+        summary.aliases.forEach(alias => queryFunctions.add(alias));
+        changed = true;
+      }
+    }
+  }
+  return queryFunctions;
+}
+
+function collectPythonLoopSignals(loop: PythonNode, content: string, queryFunctions: Set<string>): LoopSignals<PythonNode> {
+  const signals: LoopSignals<PythonNode> = { pacing: false };
   const visit = (node: PythonNode, root = false): void => {
     if (!root && (PYTHON_LOOP_TYPES.has(node.name) || node.name === 'FunctionDefinition' || node.name === 'LambdaExpression')) return;
     if (node.name === 'AwaitExpression') {
@@ -456,11 +656,32 @@ function collectPythonLoopSignals(loop: PythonNode, content: string): { awaitNod
       const name = pythonCallName(node, content);
       if (!signals.transactionNode && isTransactionCall(name)) signals.transactionNode = node;
       if (!signals.queryNode && isPythonDatabaseCall(node, content)) signals.queryNode = node;
+      else if (!signals.queryNode && queryFunctions.has(name)) {
+        signals.queryNode = node;
+        signals.indirectQuery = true;
+      }
     }
     for (const child of pythonChildren(node)) visit(child);
   };
   visit(loop, true);
   return signals;
+}
+
+function pythonNodeContainsQuery(node: PythonNode, content: string, queryFunctions: Set<string>): boolean {
+  let found = false;
+  const visit = (candidate: PythonNode, root = false): void => {
+    if (found || (!root && candidate.name === 'FunctionDefinition')) return;
+    if (candidate.name === 'CallExpression') {
+      const name = pythonCallName(candidate, content);
+      if (isPythonDatabaseCall(candidate, content) || queryFunctions.has(name)) {
+        found = true;
+        return;
+      }
+    }
+    for (const child of pythonChildren(candidate)) visit(child);
+  };
+  visit(node, true);
+  return found;
 }
 
 function nearestPythonFunction(ancestors: PythonNode[]): PythonNode | undefined {
@@ -524,6 +745,31 @@ function isUnboundedPythonOrmRead(node: PythonNode, ancestors: PythonNode[], con
     && !/(?:filter|filter_by)\s*\([^)]*\bid\s*(?:==|=)/i.test(container);
 }
 
+function pythonCopyOnGrow(node: PythonNode, ancestors: PythonNode[], content: string): string | undefined {
+  const repeatedBy = nearestPythonLoop(ancestors, node.from);
+  if (!repeatedBy || staticallyBoundedPythonLoop(repeatedBy, content)) return undefined;
+  const expression = content.slice(node.from, node.to).trim();
+  if (node.name === 'AssignStatement') {
+    const target = /^([A-Za-z_]\w*)\s*=/.exec(expression)?.[1];
+    if (!target) return undefined;
+    const escaped = target.replace(/[$()*+.?[\]^{|}]/g, '\\$&');
+    if (new RegExp(`^${escaped}\\s*=\\s*${escaped}\\s*\\+\\s*\\[`).test(expression)) return 'self-list-concat';
+    if (new RegExp(`^${escaped}\\s*=\\s*\\[\\s*\\*${escaped}\\b`).test(expression)) return 'self-list-spread';
+    if (new RegExp(`^${escaped}\\s*=\\s*\\{\\s*\\*\\*${escaped}\\b`).test(expression)) return 'self-dict-spread';
+  }
+  if (node.name === 'CallExpression') {
+    const name = pythonCallName(node, content);
+    if (/\.insert$/.test(name) && /^\(\s*0\s*,/.test(expression.slice(name.length))) return 'front-insert';
+  }
+  return undefined;
+}
+
+function isQuadraticPythonFlatten(node: PythonNode, content: string): boolean {
+  if (node.name !== 'CallExpression' || pythonCallName(node, content) !== 'sum') return false;
+  const expression = content.slice(node.from, node.to);
+  return /^sum\s*\(\s*[^,]+,\s*\[\s*\]\s*\)$/s.test(expression);
+}
+
 export function scanPythonStructure(content: string, relativeFile: string): StructuralScanResult {
   const findings: VelloxFindingInput[] = [];
   const lines = content.split('\n');
@@ -534,9 +780,29 @@ export function scanPythonStructure(content: string, relativeFile: string): Stru
     return { findings, parsed: false };
   }
   if (pythonHasSyntaxError(root)) return { findings, parsed: false };
+  const queryFunctions = collectPythonQueryFunctions(root, content);
 
   const walk = (node: PythonNode, ancestors: PythonNode[] = []): void => {
     const line = lineAt(content, node.from);
+    const growthPattern = !ignoredAt(lines, line) ? pythonCopyOnGrow(node, ancestors, content) : undefined;
+    if (growthPattern) {
+      findings.push(structuralFinding({
+        ruleId: 'code/quadratic-collection-growth', severity: 'MEDIUM', category: 'code',
+        title: 'Collection is copied while it grows inside an iteration', evidence: sourceLine(content, line),
+        recommendation: growthPattern === 'front-insert'
+          ? 'Append in iteration order and reverse once if needed; inserting at index zero shifts the existing list every time.'
+          : 'Mutate a local list/dict accumulator, or collect entries and construct the final value once after the loop.',
+        file: relativeFile, line, metadata: { parser: 'lezer-python', pattern: growthPattern }
+      }));
+    }
+    if (!ignoredAt(lines, line) && isQuadraticPythonFlatten(node, content)) {
+      findings.push(structuralFinding({
+        ruleId: 'code/quadratic-list-flatten', severity: 'MEDIUM', category: 'code',
+        title: 'Lists are flattened through repeated concatenation', evidence: sourceLine(content, line),
+        recommendation: 'Use itertools.chain.from_iterable(chunks) or a comprehension so the output is built in one pass.',
+        file: relativeFile, line, metadata: { parser: 'lezer-python', pattern: 'sum-lists' }
+      }));
+    }
     if (PYTHON_LOOP_TYPES.has(node.name) && !ignoredAt(lines, line) && !intentionalLoopContext(lines, line)) {
       const outerLoop = nearestPythonLoop(ancestors);
       if (outerLoop && !staticallyBoundedPythonLoop(node, content) && !staticallyBoundedPythonLoop(outerLoop, content)
@@ -548,7 +814,7 @@ export function scanPythonStructure(content: string, relativeFile: string): Stru
           file: relativeFile, line, metadata: { parser: 'lezer-python', outerLoopStart: lineAt(content, outerLoop.from) }
         }));
       }
-      const signals = collectPythonLoopSignals(node, content);
+      const signals = collectPythonLoopSignals(node, content, queryFunctions);
       const signal = signals.transactionNode || signals.queryNode || (!signals.pacing ? signals.awaitNode : undefined);
       if (signal) {
         const signalLine = lineAt(content, signal.from);
@@ -561,8 +827,10 @@ export function scanPythonStructure(content: string, relativeFile: string): Stru
         const query = !transaction && Boolean(signals.queryNode);
         findings.push(structuralFinding({
           ruleId: transaction ? 'code/transaction-in-loop' : query ? 'code/synchronous-query-loop' : 'code/sequential-async-loop',
-          severity: hotspotSeverity(relativeFile), category: 'code',
-          title: transaction ? 'Transaction boundary inside a loop' : query ? 'Synchronous database operation inside a loop' : 'Sequential asynchronous work inside a loop',
+          severity: hotspotSeverity(relativeFile), confidence: signals.indirectQuery ? 'MEDIUM' : 'HIGH', category: 'code',
+          title: transaction ? 'Transaction boundary inside a loop' : query
+            ? signals.indirectQuery ? 'Function reaching the database is called inside a loop' : 'Synchronous database operation inside a loop'
+            : 'Sequential asynchronous work inside a loop',
           evidence: sourceLine(content, signalLine),
           recommendation: transaction
             ? 'Move commit/flush outside the loop and use a bulk transaction where semantics allow it.'
@@ -570,7 +838,7 @@ export function scanPythonStructure(content: string, relativeFile: string): Stru
               ? 'Prefetch or mutate the required records in bulk to remove the N+1 database round trips.'
               : 'Batch the operation or use measured, bounded asyncio concurrency.',
           file: relativeFile, line: signalLine,
-          metadata: { parser: 'lezer-python', loopStart: line, pattern: transaction ? 'transaction' : query ? 'database' : 'await' }
+          metadata: { parser: 'lezer-python', loopStart: line, pattern: transaction ? 'transaction' : query ? signals.indirectQuery ? 'indirect-database' : 'database' : 'await' }
         }));
       }
     }
@@ -601,12 +869,19 @@ export function scanPythonStructure(content: string, relativeFile: string): Stru
           }));
         }
       }
-      if (/^(?:asyncio\.)?gather$/i.test(name) && /\bfor\b[\s\S]*\bin\b|\*\s*(?!batch|chunk|page|window)\w+/i.test(callText)) {
+      const gatherWork = /\bfor\b[\s\S]*\bin\b|\*\s*\w+/i.test(callText);
+      const boundedGather = /\bfor\b[\s\S]*\bin\s+(?:batch|chunk|limited|page|window)\w*\b/i.test(callText)
+        || /\*\s*(?:batch|chunk|limited|page|window)\w*\b/i.test(callText)
+        || /\b(?:bounded|limited|limiter|semaphore|workerPool)\w*\s*\(/i.test(callText);
+      if (/^(?:asyncio\.)?gather$/i.test(name) && gatherWork && !boundedGather) {
+        const queryFanout = pythonNodeContainsQuery(node, content, queryFunctions);
         findings.push(structuralFinding({
-          ruleId: 'code/unbounded-async-fanout', severity: 'HIGH', category: 'code',
-          title: 'Async gather has no concurrency bound', evidence: sourceLine(content, line),
-          recommendation: 'Use a semaphore, worker queue, or measured batches to cap concurrent tasks.',
-          file: relativeFile, line, metadata: { parser: 'lezer-python', pattern: 'asyncio.gather' }
+          ruleId: queryFanout ? 'code/unbounded-query-fanout' : 'code/unbounded-async-fanout', severity: 'HIGH', category: 'code',
+          title: queryFanout ? 'Database query fan-out has no concurrency bound' : 'Async gather has no concurrency bound', evidence: sourceLine(content, line),
+          recommendation: queryFanout
+            ? 'Cap database concurrency with a semaphore or measured batches; prefer one bulk query when possible.'
+            : 'Use a semaphore, worker queue, or measured batches to cap concurrent tasks.',
+          file: relativeFile, line, metadata: { parser: 'lezer-python', pattern: 'asyncio.gather', database: queryFanout }
         }));
       }
 

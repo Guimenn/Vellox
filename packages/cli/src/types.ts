@@ -39,6 +39,7 @@ export interface VelloxReport {
   target: string;
   databaseContext: { detected: boolean; evidence: string[] };
   summary: VelloxSummary;
+  metrics?: Record<string, string | number | boolean>;
   findings: VelloxFinding[];
 }
 

@@ -4,8 +4,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { DEFAULT_CONFIG, loadConfig, readReport, resolveFromTarget, writeJson } from './config.js';
+import { analyzePostgresExplain } from './explain.js';
 import { buildMigration, evaluateBudgets, formatMarkdown, formatPretty, formatTop, toSarif } from './formatters.js';
 import { analyzeSqlDocument, analyzeSqlQuery, scanProject } from './scanner.js';
+import { filterRules, formatRuleCatalog } from './rules.js';
 import { VelloxBudgets, VelloxReport } from './types.js';
 
 const args = process.argv.slice(2);
@@ -271,33 +273,23 @@ function aiPrompt(sql: string): void {
   ].join('\n'));
 }
 
-function collectPlanNodes(node: Record<string, unknown>, nodes: Record<string, unknown>[] = []): Record<string, unknown>[] {
-  nodes.push(node);
-  if (Array.isArray(node.Plans)) {
-    for (const child of node.Plans) if (child && typeof child === 'object') collectPlanNodes(child as Record<string, unknown>, nodes);
-  }
-  return nodes;
-}
-
 function explain(filePath?: string): void {
   if (!filePath) throw new Error('Usage: vellox explain <plan.json>');
-  const parsed = JSON.parse(fs.readFileSync(path.resolve(filePath), 'utf8')) as Record<string, unknown> | Array<Record<string, unknown>>;
-  const document = Array.isArray(parsed) ? parsed[0]! : parsed;
-  const root = (document.Plan || document) as Record<string, unknown>;
-  if (!root || typeof root !== 'object') throw new Error('Invalid EXPLAIN JSON: root Plan is missing.');
-  const nodes = collectPlanNodes(root);
-  const scans = nodes.filter(node => node['Node Type'] === 'Seq Scan');
-  const sorts = nodes.filter(node => String(node['Sort Method'] || '').toLowerCase().includes('external'));
-  const hit = nodes.reduce((sum, node) => sum + Number(node['Shared Hit Blocks'] || 0), 0);
-  const read = nodes.reduce((sum, node) => sum + Number(node['Shared Read Blocks'] || 0), 0);
-  const ratio = hit + read > 0 ? hit / (hit + read) * 100 : 100;
-  console.log(header());
-  console.log('POSTGRESQL EXPLAIN EVIDENCE');
-  console.log('  Nodes:             ' + nodes.length);
-  console.log('  Sequential scans: ' + scans.length);
-  console.log('  External sorts:   ' + sorts.length);
-  console.log('  Buffer hit ratio: ' + ratio.toFixed(1) + '% (' + hit + ' hit / ' + read + ' read)');
-  for (const node of scans) console.log('  - Seq Scan on ' + (node['Relation Name'] || 'unknown relation') + '; filter: ' + (node.Filter || 'not reported'));
+  const resolved = path.resolve(filePath);
+  const report = analyzePostgresExplain(JSON.parse(fs.readFileSync(resolved, 'utf8')), path.basename(resolved), VERSION);
+  const format = option('--format') || 'pretty';
+  if (format === 'json') writeOutput(JSON.stringify(report, null, 2));
+  else if (format === 'sarif') writeOutput(JSON.stringify(toSarif(report), null, 2));
+  else if (format === 'pretty') {
+    console.log(header());
+    console.log(formatPretty(report));
+  } else throw new Error('Unsupported format "' + format + '". Use pretty, json, or sarif.');
+}
+
+function rules(): void {
+  const matches = filterRules(positionals().join(' '));
+  if (option('--format') === 'json') writeOutput(JSON.stringify(matches, null, 2));
+  else console.log(formatRuleCatalog(matches));
 }
 
 function ddl(filePath?: string): void {
@@ -457,7 +449,8 @@ function help(): void {
     '  vellox fix [path] [--report file] [--output migration.sql]',
     '  vellox report [path] [--report file] [--output report.md]',
     '  vellox top [path] [--report file]',
-    '  vellox explain <plan.json>',
+    '  vellox explain <plan.json> [--format pretty|json|sarif] [--output file]',
+    '  vellox rules [filter] [--format pretty|json]',
     '  vellox ddl <migration.sql>',
     '  vellox ai "<sql>" | demo | discover | init | hook | ci | doctor',
     '',
@@ -483,6 +476,7 @@ function main(): void {
   if (command === 'demo' || command === '-d') return demo();
   if (['ai', 'prompt', 'ai-prompt', '-p'].includes(command)) return aiPrompt(positionals().join(' '));
   if (['explain', 'plan'].includes(command)) return explain(positionals()[0]);
+  if (command === 'rules') return rules();
   if (['ddl', 'ddl-check'].includes(command)) return ddl(positionals()[0]);
   if (command === 'doctor') return doctor();
   if (command === 'discover') return discover(targetFrom(positionals()[0]));

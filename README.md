@@ -11,7 +11,7 @@ Find supported risks, inspect the evidence, and review the action.
 
 [![npm](https://img.shields.io/npm/v/vellox?style=flat-square&label=npx%20vellox&labelColor=070908&color=c8ff53)](https://www.npmjs.com/package/vellox)
 [![CI](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml/badge.svg)](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml)
-[![tests](https://img.shields.io/badge/tests-123%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
+[![tests](https://img.shields.io/badge/tests-146%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-070908?style=flat-square&labelColor=070908&color=c8ff53)](./package.json)
 [![license](https://img.shields.io/badge/license-proprietary-070908?style=flat-square&labelColor=070908&color=c8ff53)](./LICENSE)
 
@@ -40,7 +40,7 @@ No global install. Run it from the root of the project you want to inspect:
 npx vellox
 ```
 
-Vellox scans the current directory and reports N+1 database work, sequential loops, repeated linear searches and sorts, quadratic collection joins, unbounded ORM reads, discarded promises, uncontrolled async fan-out, event-loop blocking, risky SQL, exposed credentials, and missing database indexes. Every command consumes the same evidence artifact:
+Vellox scans the current directory and reports direct or same-file transitive N+1 database work, sequential loops, repeated linear searches and sorts, quadratic collection growth, unbounded ORM reads, database-specific async fan-out, event-loop blocking, risky SQL, exposed credentials, and missing database indexes. Every command consumes the same evidence artifact:
 
 ```text
 .vellox/report.json
@@ -82,11 +82,11 @@ npx vellox explain plan.json
 
 | Surface | Signals |
 | --- | --- |
-| **JavaScript & TypeScript** | Parser-backed N+1/query loops, O(n²) collection joins, repeated linear searches/sorts, async `forEach`, dangling async `map`, unbounded `Promise.all`, transaction-per-item, blocking calls in async functions |
-| **Python** | Parser-backed sync/async query loops, nested collection scans, repeated membership/sorts, unbounded `asyncio.gather`, blocking I/O or sync database calls in async functions, transaction-per-item |
+| **JavaScript & TypeScript** | Parser-backed direct and same-file transitive N+1/query loops, O(n²) collection joins and copy-on-grow accumulators, repeated linear searches/sorts, async `forEach`, dangling async `map`, query-aware unbounded `Promise.all`, transaction-per-item, blocking calls in async functions |
+| **Python** | Parser-backed direct and same-file transitive query loops, nested collection scans, repeated membership/sorts, quadratic list/dict growth and flattening, query-aware unbounded `asyncio.gather`, blocking I/O or sync database calls in async functions, transaction-per-item |
 | **SQL & ORM** | Unbounded Prisma/Mongoose/Sequelize/SQLAlchemy/Django reads, plain and embedded SQL, unique-lookup-aware bounds, full-table writes, large join graphs, avoidable deduplication, dynamic SQL, missing FK indexes |
 | **Infrastructure config** | Floating container images, effective final-stage users, complete Kubernetes CPU/memory policies and privileged workloads, Terraform public database/storage/ingress exposure |
-| **Execution plans** | PostgreSQL JSON plan nodes, sequential scans, external sorts, and buffer hit/read evidence |
+| **Execution plans** | Actionable PostgreSQL JSON diagnostics for expensive sequential scans, disk spills, cardinality misestimation, nested-loop amplification, and low buffer hit ratios |
 | **Security** | Supported API tokens, private keys, and credential-bearing database URLs with redacted output |
 
 ### Safe by design
@@ -110,7 +110,8 @@ npx vellox explain plan.json
 | `npx vellox optimize <file.sql\|"SQL">` | Analyzes one query or every statement in a SQL file |
 | `npx vellox scan . --format json` | Emits the complete machine-readable evidence report |
 | `npx vellox scan . --format sarif` | Produces SARIF for GitHub code scanning |
-| `npx vellox explain <file>` | Diagnoses a PostgreSQL JSON `EXPLAIN` plan |
+| `npx vellox explain <file> --format json` | Diagnoses a PostgreSQL JSON `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plan with measured metrics |
+| `npx vellox rules [filter]` | Lists the complete rule catalog with default severity and confidence |
 | `npx vellox ai "<sql>"` | Creates a structured optimization prompt for an AI coding assistant |
 | `npx vellox fix` | Generates SQL only from fixes attached to the current report |
 | `npx vellox ddl <file>` | Checks a SQL migration for risky schema patterns |
@@ -164,7 +165,7 @@ npx vellox explain plan.json
 
 ## Proof, not promises
 
-The repository currently passes **123 automated tests** (120 TypeScript + 3 Python), including a positive/negative precision corpus, CLI safety contracts, structural JS/TS/Python analysis, controlled concurrency, malformed-source fallback, SQL bounds, dynamic SQL, stable baselines, schemas, and manifests.
+The repository currently passes **146 automated tests** (143 TypeScript + 3 Python), including a positive/negative precision corpus, same-file transitive call analysis, query-specific fan-out, quadratic growth patterns, execution-plan diagnostics, CLI safety contracts, malformed-source fallback, SQL bounds, stable baselines, schemas, and manifests.
 
 Reproduce the checks on your machine:
 

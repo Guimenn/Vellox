@@ -22,6 +22,12 @@ export function formatPretty(report: VelloxReport): string {
     ''
   ];
 
+  if (report.metrics && Object.keys(report.metrics).length) {
+    lines.push('  MEASURED PLAN METRICS');
+    for (const [name, value] of Object.entries(report.metrics)) lines.push(`  ├─ ${name}: ${value}`);
+    lines.push('');
+  }
+
   if (!report.findings.length) {
     lines.push('✅ No supported high-risk patterns were detected.');
     return lines.join('\n');
