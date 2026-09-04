@@ -5,6 +5,7 @@ import { Severity, VelloxFindingInput } from './types.js';
 export interface StructuralScanResult {
   findings: VelloxFindingInput[];
   parsed: boolean;
+  parseError?: { line?: number; parser: 'babel' | 'lezer-python' };
 }
 
 interface PythonNode {
@@ -244,8 +245,12 @@ function isAwaitedByAncestor(ancestors: any[]): boolean {
 
 const MAX_STATIC_ITERATION_BOUND = 100;
 
+function staticCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
 interface JavaScriptBoundedBindings {
-  byOwner: WeakMap<object, Set<string>>;
+  byOwner: WeakMap<object, Map<string, number>>;
   program: object;
 }
 
@@ -257,12 +262,12 @@ function collectJavaScriptBoundedBindings(program: any, content: string): JavaSc
   const owners = new Set<object>([program]);
   const constants = new WeakMap<object, Map<string, number>>();
   const assignments = new WeakMap<object, Map<string, number>>();
-  const byOwner = new WeakMap<object, Set<string>>();
+  const byOwner = new WeakMap<object, Map<string, number>>();
   const ensure = (owner: object): void => {
     owners.add(owner);
     if (!constants.has(owner)) constants.set(owner, new Map());
     if (!assignments.has(owner)) assignments.set(owner, new Map());
-    if (!byOwner.has(owner)) byOwner.set(owner, new Set());
+    if (!byOwner.has(owner)) byOwner.set(owner, new Map());
   };
   const firstPass = (node: any, owner: object): void => {
     const nextOwner = JS_FUNCTION_TYPES.has(node?.type) ? node : owner;
@@ -273,7 +278,8 @@ function collectJavaScriptBoundedBindings(program: any, content: string): JavaSc
         const name = declaration.id.name;
         const counts = assignments.get(nextOwner)!;
         counts.set(name, (counts.get(name) || 0) + 1);
-        if (declaration.init?.type === 'NumericLiteral') constants.get(nextOwner)!.set(name, declaration.init.value);
+        const constant = declaration.init?.type === 'NumericLiteral' ? staticCount(declaration.init.value) : undefined;
+        if (constant !== undefined) constants.get(nextOwner)!.set(name, constant);
       }
     }
     if (node?.type === 'AssignmentExpression' && node.left?.type === 'Identifier') {
@@ -284,32 +290,36 @@ function collectJavaScriptBoundedBindings(program: any, content: string): JavaSc
   };
   firstPass(program, program);
 
-  const boundedExpression = (node: any, owner: object): boolean => {
-    if (!node) return false;
+  const boundedExpression = (node: any, owner: object): number | undefined => {
+    if (!node) return undefined;
     const bounds = byOwner.get(owner)!;
     const numeric = (candidate: any): number | undefined => {
-      if (candidate?.type === 'NumericLiteral') return candidate.value;
+      if (candidate?.type === 'NumericLiteral') return staticCount(candidate.value);
       if (candidate?.type === 'Identifier') return constants.get(owner)?.get(candidate.name) ?? constants.get(program)?.get(candidate.name);
       return undefined;
     };
-    if (node.type === 'Identifier') return bounds.has(node.name);
-    if (node.type === 'ArrayExpression') return !(node.elements || []).some((element: any) => element?.type === 'SpreadElement')
-      && (node.elements?.length || 0) <= MAX_STATIC_ITERATION_BOUND;
+    if (node.type === 'Identifier') return bounds.get(node.name);
+    if (node.type === 'ArrayExpression') {
+      const size = node.elements?.length || 0;
+      return !(node.elements || []).some((element: any) => element?.type === 'SpreadElement') ? size : undefined;
+    }
     if (node.type === 'NewExpression' && jsNameForBound(node.callee, content) === 'Array') {
       const size = numeric(node.arguments?.[0]);
-      return size !== undefined && size >= 0 && size <= MAX_STATIC_ITERATION_BOUND;
+      return size;
     }
-    if (node.type !== 'CallExpression' && node.type !== 'OptionalCallExpression') return false;
+    if (node.type !== 'CallExpression' && node.type !== 'OptionalCallExpression') return undefined;
     const name = jsNameForBound(node.callee, content);
     if (name === 'Array.from') {
       const length = node.arguments?.[0]?.properties?.find((property: any) => jsNameForBound(property.key, content) === 'length')?.value;
       const size = numeric(length);
-      return size !== undefined && size >= 0 && size <= MAX_STATIC_ITERATION_BOUND;
+      return size;
     }
-    if (jsProperty(node, content) !== 'slice') return false;
+    if (jsProperty(node, content) !== 'slice') return undefined;
     const start = numeric(node.arguments?.[0]);
     const end = numeric(node.arguments?.[1]);
-    return (start === undefined || start === 0) && end !== undefined && end >= 0 && end <= MAX_STATIC_ITERATION_BOUND;
+    return (start === undefined || start === 0) && end !== undefined
+      ? end - (start || 0)
+      : undefined;
   };
 
   let changed = true;
@@ -321,8 +331,9 @@ function collectJavaScriptBoundedBindings(program: any, content: string): JavaSc
         for (const declaration of node.declarations || []) {
           if (declaration.id?.type !== 'Identifier' || assignments.get(nextOwner)?.get(declaration.id.name) !== 1) continue;
           const bounds = byOwner.get(nextOwner)!;
-          if (!bounds.has(declaration.id.name) && boundedExpression(declaration.init, nextOwner)) {
-            bounds.add(declaration.id.name);
+          const bound = boundedExpression(declaration.init, nextOwner);
+          if (!bounds.has(declaration.id.name) && bound !== undefined) {
+            bounds.set(declaration.id.name, bound);
             changed = true;
           }
         }
@@ -338,17 +349,27 @@ function jsNameForBound(node: any, content: string): string {
   return callName(node, content);
 }
 
-function boundedCollection(node: any, content: string, bindings: ReadonlySet<string> = new Set()): boolean {
-  if (!node) return false;
+function javascriptCollectionBound(node: any, content: string, bindings: ReadonlyMap<string, number> = new Map()): number | undefined {
+  if (!node) return undefined;
   const name = callName(node, content);
-  if (bindings.has(name)) return true;
-  if (node.type === 'Identifier' && /^(?:batch|batches|chunk|chunks|limited|page|pageItems|window)$/i.test(name)) return true;
+  const binding = bindings.get(name);
+  if (binding !== undefined) return binding;
+  if (node.type === 'ArrayExpression' && !(node.elements || []).some((element: any) => element?.type === 'SpreadElement')) {
+    return node.elements?.length || 0;
+  }
   if ((node.type === 'CallExpression' || node.type === 'OptionalCallExpression') && jsProperty(node, content) === 'slice') {
     const start = node.arguments?.[0]?.type === 'NumericLiteral' ? node.arguments[0].value : 0;
     const end = node.arguments?.[1]?.type === 'NumericLiteral' ? node.arguments[1].value : undefined;
-    return start === 0 && end !== undefined && end >= 0 && end <= MAX_STATIC_ITERATION_BOUND;
+    return start === 0 ? staticCount(end) : undefined;
   }
-  return false;
+  return undefined;
+}
+
+function boundedCollection(node: any, content: string, bindings: ReadonlyMap<string, number> = new Map()): boolean {
+  const name = callName(node, content);
+  const bound = javascriptCollectionBound(node, content, bindings);
+  return bound !== undefined && bound <= MAX_STATIC_ITERATION_BOUND
+    || node?.type === 'Identifier' && /^(?:batch|batches|chunk|chunks|limited|page|pageItems|window)$/i.test(name);
 }
 
 function structuralFinding(input: VelloxFindingInput): VelloxFindingInput {
@@ -373,16 +394,53 @@ function nearestJavaScriptIteration(ancestors: any[], content: string, position?
   return undefined;
 }
 
-function staticallyBoundedJavaScriptIteration(node: any, content: string, bindings: ReadonlySet<string> = new Set()): boolean {
-  if (!node) return false;
+function javascriptIterationBound(node: any, content: string, bindings: ReadonlyMap<string, number> = new Map()): number | undefined {
+  if (!node) return undefined;
   const text = typeof node.start === 'number' && typeof node.end === 'number' ? content.slice(node.start, node.end) : '';
-  if ((node.type === 'CallExpression' || node.type === 'OptionalCallExpression') && boundedCollection(node.callee?.object, content, bindings)) return true;
-  if (node.type === 'ForOfStatement' && (bindings.has(callName(node.right, content))
-    || node.right?.type === 'ArrayExpression'
-      && !(node.right.elements || []).some((element: any) => element?.type === 'SpreadElement')
-      && (node.right.elements?.length || 0) <= MAX_STATIC_ITERATION_BOUND)) return true;
-  if (node.type === 'ForStatement' && /(?:<|<=)\s*(?:[1-9]|[1-9]\d|100)\b/.test(text.slice(0, Math.max(0, text.indexOf(')') + 1)))) return true;
-  return false;
+  if (node.type === 'CallExpression' || node.type === 'OptionalCallExpression') return javascriptCollectionBound(node.callee?.object, content, bindings);
+  if (node.type === 'ForOfStatement') return javascriptCollectionBound(node.right, content, bindings);
+  if (node.type === 'ForStatement') {
+    const header = text.slice(0, Math.max(0, text.indexOf(')') + 1));
+    const match = /(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*0\s*;[\s\S]*?\b\1\s*(<|<=)\s*(\d+)\b/.exec(header);
+    if (match) {
+      const bound = Number(match[3]) + (match[2] === '<=' ? 1 : 0);
+      if (Number.isSafeInteger(bound)) return bound;
+    }
+  }
+  return undefined;
+}
+
+function staticallyBoundedJavaScriptIteration(node: any, content: string, bindings: ReadonlyMap<string, number> = new Map()): boolean {
+  const bound = javascriptIterationBound(node, content, bindings);
+  return bound !== undefined && bound <= MAX_STATIC_ITERATION_BOUND;
+}
+
+function javascriptDominatingGuardBound(node: any, ancestors: any[], content: string): number | undefined {
+  if (node?.type !== 'ForOfStatement') return undefined;
+  const collection = callName(node.right, content);
+  if (!/^[A-Za-z_$][\w$]*$/.test(collection)) return undefined;
+  const parent = ancestors.at(-1);
+  const statements = parent?.type === 'BlockStatement' && Array.isArray(parent.body) ? parent.body : undefined;
+  const position = statements?.indexOf(node) ?? -1;
+  const guard = position > 0 ? statements?.[position - 1] : undefined;
+  if (guard?.type !== 'IfStatement' || guard.alternate) return undefined;
+  const exits = guard.consequent?.type === 'ReturnStatement' || guard.consequent?.type === 'ThrowStatement'
+    || guard.consequent?.type === 'BlockStatement'
+      && guard.consequent.body?.length === 1
+      && ['ReturnStatement', 'ThrowStatement'].includes(guard.consequent.body[0]?.type);
+  if (!exits || guard.test?.type !== 'BinaryExpression') return undefined;
+  const left = callName(guard.test.left, content);
+  const right = callName(guard.test.right, content);
+  const operator = guard.test.operator;
+  let limit: number | undefined;
+  if (left === `${collection}.length` && guard.test.right?.type === 'NumericLiteral' && (operator === '>' || operator === '>=')) {
+    limit = staticCount(guard.test.right.value);
+    if (limit !== undefined && operator === '>=') limit -= 1;
+  } else if (right === `${collection}.length` && guard.test.left?.type === 'NumericLiteral' && (operator === '<' || operator === '<=')) {
+    limit = staticCount(guard.test.left.value);
+    if (limit !== undefined && operator === '<=') limit -= 1;
+  }
+  return limit !== undefined && limit >= 0 ? limit : undefined;
 }
 
 interface JavaScriptIterationDescriptor {
@@ -454,7 +512,7 @@ function sameJavaScriptExpression(left: any, right: any, content: string): boole
   return Boolean(leftName && rightName && leftName === rightName);
 }
 
-function javascriptCopyOnGrow(node: any, ancestors: any[], content: string, bindings: ReadonlySet<string>): string | undefined {
+function javascriptCopyOnGrow(node: any, ancestors: any[], content: string, bindings: ReadonlyMap<string, number>): string | undefined {
   const repeatedBy = nearestJavaScriptIteration(ancestors, content, node.start);
   if (!repeatedBy || staticallyBoundedJavaScriptIteration(repeatedBy, content, bindings)) return undefined;
 
@@ -508,15 +566,15 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
         'dynamicImport', 'importAttributes', 'topLevelAwait'
       ]
     }).program;
-  } catch {
-    return { findings, parsed: false };
+  } catch (error) {
+    return { findings, parsed: false, parseError: { line: (error as { loc?: { line?: number } }).loc?.line, parser: 'babel' } };
   }
   const queryFunctions = collectJavaScriptQueryFunctions(program, content, externalQueryFunctions);
   const boundedBindings = collectJavaScriptBoundedBindings(program, content);
 
   const walk = (node: any, ancestors: any[] = [], parent?: any): void => {
     const line = node.loc?.start?.line || (typeof node.start === 'number' ? lineAt(content, node.start) : 1);
-    const bindings = boundedBindings.byOwner.get(javascriptScopeOwner(ancestors, boundedBindings.program)) || new Set<string>();
+    const bindings = boundedBindings.byOwner.get(javascriptScopeOwner(ancestors, boundedBindings.program)) || new Map<string, number>();
     const growthPattern = !ignoredAt(lines, line) ? javascriptCopyOnGrow(node, ancestors, content, bindings) : undefined;
     if (growthPattern) {
       findings.push(structuralFinding({
@@ -525,7 +583,7 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
         recommendation: growthPattern.startsWith('front-')
           ? 'Append in iteration order and reverse once if needed; inserting at index zero shifts the existing collection every time.'
           : 'Mutate a local accumulator with push/Object.assign, or collect entries and construct the final value once after the iteration.',
-        file: relativeFile, line, metadata: { parser: 'babel', pattern: growthPattern }
+        file: relativeFile, line, metadata: { parser: 'babel', pattern: growthPattern, complexity: 'O(n^2)' }
       }));
     }
     if (JS_LOOP_TYPES.has(node.type) && !ignoredAt(lines, line) && !intentionalLoopContext(lines, line)) {
@@ -536,7 +594,7 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
           ruleId: 'code/quadratic-nested-iteration', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
           title: 'Nested iteration can grow quadratically', evidence: sourceLine(content, line),
           recommendation: 'Index one collection with a Map/Set or replace the nested scan with a single-pass join.',
-          file: relativeFile, line, metadata: { parser: 'babel', outerLoopStart: outerIteration.loc?.start?.line || line }
+          file: relativeFile, line, metadata: { parser: 'babel', outerLoopStart: outerIteration.loc?.start?.line || line, complexity: 'O(n*m)' }
         }));
       }
       const signals = collectJavaScriptLoopSignals(node, content, queryFunctions, externalQueryFunctions);
@@ -553,9 +611,12 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
         }
         const transaction = Boolean(signals.transactionNode);
         const query = !transaction && Boolean(signals.queryNode);
+        const iterationBound = javascriptIterationBound(node, content, bindings)
+          ?? javascriptDominatingGuardBound(node, ancestors, content);
+        const defaultSeverity = hotspotSeverity(relativeFile);
         findings.push(structuralFinding({
           ruleId: transaction ? 'code/transaction-in-loop' : query ? 'code/query-in-loop' : 'code/sequential-async-loop',
-          severity: hotspotSeverity(relativeFile),
+          severity: iterationBound !== undefined && iterationBound <= MAX_STATIC_ITERATION_BOUND && defaultSeverity === 'HIGH' ? 'MEDIUM' : defaultSeverity,
           confidence: signals.indirectQuery ? 'MEDIUM' : 'HIGH',
           category: 'code',
           title: transaction ? 'Transaction boundary inside a loop' : query
@@ -572,6 +633,8 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
           line: signalLine,
           metadata: {
             parser: 'babel', loopStart: line,
+            complexity: 'O(n)', operationsPerIteration: 1,
+            iterationBound: iterationBound ?? 'input-dependent',
             pattern: transaction ? 'transaction' : query ? signals.crossFileQuery ? 'cross-file-database' : signals.indirectQuery ? 'indirect-database' : 'database' : 'await',
             ...(signals.queryPath ? { callPath: signals.queryPath } : {})
           }
@@ -593,7 +656,7 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
           ruleId: 'code/quadratic-nested-iteration', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
           title: 'Nested collection pass can grow quadratically', evidence: sourceLine(content, line),
           recommendation: 'Pre-index the inner collection or combine both passes into a single linear traversal.',
-          file: relativeFile, line, metadata: { parser: 'babel', pattern: property }
+          file: relativeFile, line, metadata: { parser: 'babel', pattern: property, complexity: 'O(n*m)' }
         }));
       }
 
@@ -605,7 +668,7 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
           ruleId: 'code/linear-search-in-loop', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
           title: 'Linear collection lookup is repeated inside an iteration', evidence: sourceLine(content, line),
           recommendation: 'Build a Map or Set once before the loop so each lookup is constant-time.',
-          file: relativeFile, line, metadata: { parser: 'babel', method: property }
+          file: relativeFile, line, metadata: { parser: 'babel', method: property, complexity: 'O(n*m)' }
         }));
       }
 
@@ -614,7 +677,7 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
           ruleId: 'code/repeated-sort-in-loop', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
           title: 'Collection is sorted repeatedly inside an iteration', evidence: sourceLine(content, line),
           recommendation: 'Sort once before the loop or maintain an indexed structure instead of repeating O(n log n) work.',
-          file: relativeFile, line, metadata: { parser: 'babel', method: 'sort' }
+          file: relativeFile, line, metadata: { parser: 'babel', method: 'sort', complexity: 'O(n*m log m)' }
         }));
       }
       if (property === 'forEach' && callback?.async) {
@@ -649,6 +712,7 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
           const mapCallback = mapCall.arguments?.find((argument: any) => JS_FUNCTION_TYPES.has(argument?.type));
           const queryFanout = Boolean(mapCallback && javascriptFunctionContainsQuery(mapCallback.body, content, queryFunctions));
           const queryPath = mapCallback ? javascriptExternalQueryPath(mapCallback.body, content, externalQueryFunctions) : undefined;
+          const taskUpperBound = javascriptCollectionBound(mapCall.callee?.object, content, bindings);
           findings.push(structuralFinding({
             ruleId: queryFanout ? 'code/unbounded-query-fanout' : 'code/unbounded-async-fanout', severity: hotspotSeverity(relativeFile), category: 'code',
             title: queryFanout ? 'Database query fan-out has no concurrency bound' : 'Promise fan-out has no concurrency bound',
@@ -656,7 +720,11 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
             recommendation: queryFanout
               ? 'Cap database concurrency with measured batches or a limiter; prefer one bulk query when the data model allows it.'
               : 'Process measured batches or use a concurrency limiter to protect memory, sockets, and downstream services.',
-            file: relativeFile, line, metadata: { parser: 'babel', pattern: name, database: queryFanout, ...(queryPath ? { callPath: queryPath } : {}) }
+            file: relativeFile, line, metadata: {
+              parser: 'babel', pattern: name, database: queryFanout,
+              complexity: 'O(n)', taskUpperBound: taskUpperBound ?? 'input-dependent',
+              ...(queryPath ? { callPath: queryPath } : {})
+            }
           }));
         }
       }
@@ -711,9 +779,21 @@ function pythonChildren(node: PythonNode): PythonNode[] {
   return children;
 }
 
-function pythonHasSyntaxError(node: PythonNode): boolean {
-  if (node.type?.isError || node.name === '⚠') return true;
-  return pythonChildren(node).some(pythonHasSyntaxError);
+function pythonAsyncYieldRecovery(node: PythonNode, content: string): boolean {
+  if (node.from !== node.to || content[node.from] !== '\n') return false;
+  const lineStart = content.lastIndexOf('\n', Math.max(0, node.from - 1)) + 1;
+  if (!/^yield(?:\s|$)/.test(content.slice(lineStart, node.from).trim())) return false;
+  const definitions = [...content.slice(0, lineStart).matchAll(/^\s*(async\s+)?def\s+/gm)];
+  return Boolean(definitions.at(-1)?.[1]);
+}
+
+function pythonSyntaxError(node: PythonNode, content: string): PythonNode | undefined {
+  if ((node.type?.isError || node.name === '⚠') && !pythonAsyncYieldRecovery(node, content)) return node;
+  for (const child of pythonChildren(node)) {
+    const error = pythonSyntaxError(child, content);
+    if (error) return error;
+  }
+  return undefined;
 }
 
 function pythonCallName(node: PythonNode, content: string): string {
@@ -851,7 +931,7 @@ function nearestPythonLoop(ancestors: PythonNode[], position?: number): PythonNo
 }
 
 interface PythonBoundedBindings {
-  byOwner: Map<string, Set<string>>;
+  byOwner: Map<string, Map<string, number>>;
   root: string;
 }
 
@@ -867,11 +947,11 @@ function collectPythonBoundedBindings(root: PythonNode, content: string): Python
   const rootKey = pythonScopeKey(root);
   const constants = new Map<string, Map<string, number>>();
   const assignments = new Map<string, Map<string, number>>();
-  const byOwner = new Map<string, Set<string>>();
+  const byOwner = new Map<string, Map<string, number>>();
   const ensure = (owner: string): void => {
     if (!constants.has(owner)) constants.set(owner, new Map());
     if (!assignments.has(owner)) assignments.set(owner, new Map());
-    if (!byOwner.has(owner)) byOwner.set(owner, new Set());
+    if (!byOwner.has(owner)) byOwner.set(owner, new Map());
   };
   const firstPass = (node: PythonNode, owner: string): void => {
     const nextOwner = node.name === 'FunctionDefinition' ? pythonScopeKey(node) : owner;
@@ -882,7 +962,8 @@ function collectPythonBoundedBindings(root: PythonNode, content: string): Python
       if (match) {
         const counts = assignments.get(nextOwner)!;
         counts.set(match[1]!, (counts.get(match[1]!) || 0) + 1);
-        if (/^\d+$/.test(match[2]!.trim())) constants.get(nextOwner)!.set(match[1]!, Number(match[2]!.trim()));
+        const constant = /^\d+$/.test(match[2]!.trim()) ? staticCount(Number(match[2]!.trim())) : undefined;
+        if (constant !== undefined) constants.get(nextOwner)!.set(match[1]!, constant);
       }
     }
     for (const child of pythonChildren(node)) firstPass(child, nextOwner);
@@ -900,14 +981,14 @@ function collectPythonBoundedBindings(root: PythonNode, content: string): Python
         if (match && assignments.get(nextOwner)?.get(match[1]!) === 1) {
           const bounds = byOwner.get(nextOwner)!;
           const boundValue = (raw: string): number | undefined => {
-            if (/^\d+$/.test(raw)) return Number(raw);
+            if (/^\d+$/.test(raw)) return staticCount(Number(raw));
             return constants.get(nextOwner)?.get(raw) ?? constants.get(rootKey)?.get(raw);
           };
           const slice = /\[\s*(?:0)?\s*:\s*([A-Za-z_]\w*|\d+)\s*\]\s*$/.exec(match[2]!);
           const islice = /\bislice\s*\([^,]+,\s*([A-Za-z_]\w*|\d+)\s*\)/.exec(match[2]!);
           const limit = boundValue(slice?.[1] || islice?.[1] || '');
-          if (!bounds.has(match[1]!) && limit !== undefined && limit >= 0 && limit <= MAX_STATIC_ITERATION_BOUND) {
-            bounds.add(match[1]!);
+          if (!bounds.has(match[1]!) && limit !== undefined && limit >= 0) {
+            bounds.set(match[1]!, limit);
             changed = true;
           }
         }
@@ -919,12 +1000,48 @@ function collectPythonBoundedBindings(root: PythonNode, content: string): Python
   return { byOwner, root: rootKey };
 }
 
-function staticallyBoundedPythonLoop(node: PythonNode, content: string, bindings: ReadonlySet<string> = new Set()): boolean {
-  const header = content.slice(node.from, Math.min(node.to, content.indexOf(':', node.from) + 1));
-  const range = /\brange\s*\(\s*(?:[1-9]|[1-9]\d|100)\s*\)/.test(header);
-  const literal = /\bin\s*(?:\[[^\]]{0,300}\]|\([^)]{0,300}\))\s*:/.test(header);
+function pythonIterationBound(node: PythonNode, content: string, bindings: ReadonlyMap<string, number> = new Map()): number | undefined {
+  const lineEnd = content.indexOf('\n', node.from);
+  const header = content.slice(node.from, Math.min(node.to, lineEnd < 0 ? node.to : lineEnd));
+  const range = /\brange\s*\(\s*(\d+)\s*\)/.exec(header);
+  if (range && Number.isSafeInteger(Number(range[1]))) return Number(range[1]);
+  const slice = /\bin\s+[A-Za-z_]\w*\[\s*(?:0)?\s*:\s*(\d+)\s*\]\s*:/.exec(header);
+  if (slice && Number.isSafeInteger(Number(slice[1]))) return Number(slice[1]);
+  const literal = /\bin\s*(\[[^\]]{0,300}\]|\([^)]{0,300}\))\s*:/.exec(header)?.[1];
+  if (literal && !literal.includes('*')) {
+    const body = literal.slice(1, -1).trim();
+    const size = body ? body.split(',').filter(Boolean).length : 0;
+    return size;
+  }
   const collection = /\bin\s+([A-Za-z_]\w*)\s*:/.exec(header)?.[1];
-  return range || literal || Boolean(collection && bindings.has(collection));
+  return collection ? bindings.get(collection) : undefined;
+}
+
+function staticallyBoundedPythonLoop(node: PythonNode, content: string, bindings: ReadonlyMap<string, number> = new Map()): boolean {
+  const bound = pythonIterationBound(node, content, bindings);
+  return bound !== undefined && bound <= MAX_STATIC_ITERATION_BOUND;
+}
+
+function pythonDominatingGuardBound(node: PythonNode, content: string): number | undefined {
+  if (node.name !== 'ForStatement') return undefined;
+  const lineStart = content.lastIndexOf('\n', Math.max(0, node.from - 1)) + 1;
+  const lineEnd = content.indexOf('\n', node.from);
+  const header = content.slice(lineStart, lineEnd < 0 ? node.to : lineEnd);
+  const collection = /\bin\s+([A-Za-z_]\w*)\s*:/.exec(header)?.[1];
+  if (!collection) return undefined;
+  const loopIndent = /^\s*/.exec(header)?.[0].length || 0;
+  const prior = content.slice(0, lineStart).split('\n')
+    .map(line => ({ raw: line, text: line.trim(), indent: /^\s*/.exec(line)?.[0].length || 0 }))
+    .filter(line => line.text && !line.text.startsWith('#'));
+  const exit = prior.at(-1);
+  const guard = prior.at(-2);
+  if (!exit || !guard || exit.indent <= loopIndent || guard.indent !== loopIndent || !/^(?:return\b|raise\b)/.test(exit.text)) return undefined;
+  const direct = new RegExp(`^if\\s+len\\(\\s*${collection}\\s*\\)\\s*(>=|>)\\s*(\\d+)\\s*:`).exec(guard.text);
+  const reversed = new RegExp(`^if\\s+(\\d+)\\s*(<=|<)\\s*len\\(\\s*${collection}\\s*\\)\\s*:`).exec(guard.text);
+  let limit = direct ? staticCount(Number(direct[2])) : reversed ? staticCount(Number(reversed[1])) : undefined;
+  const operator = direct?.[1] || reversed?.[2];
+  if (limit !== undefined && (operator === '>=' || operator === '<=')) limit -= 1;
+  return limit !== undefined && limit >= 0 ? limit : undefined;
 }
 
 function looksLikeQuadraticPythonJoin(inner: PythonNode, outer: PythonNode, content: string): boolean {
@@ -964,7 +1081,7 @@ function isUnboundedPythonOrmRead(node: PythonNode, ancestors: PythonNode[], con
     && !/(?:filter|filter_by)\s*\([^)]*\bid\s*(?:==|=)/i.test(container);
 }
 
-function pythonCopyOnGrow(node: PythonNode, ancestors: PythonNode[], content: string, bindings: ReadonlySet<string>): string | undefined {
+function pythonCopyOnGrow(node: PythonNode, ancestors: PythonNode[], content: string, bindings: ReadonlyMap<string, number>): string | undefined {
   const repeatedBy = nearestPythonLoop(ancestors, node.from);
   if (!repeatedBy || staticallyBoundedPythonLoop(repeatedBy, content, bindings)) return undefined;
   const expression = content.slice(node.from, node.to).trim();
@@ -996,15 +1113,16 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
   try {
     root = pythonParser.parse(content).topNode as unknown as PythonNode;
   } catch {
-    return { findings, parsed: false };
+    return { findings, parsed: false, parseError: { parser: 'lezer-python' } };
   }
-  if (pythonHasSyntaxError(root)) return { findings, parsed: false };
+  const syntaxError = pythonSyntaxError(root, content);
+  if (syntaxError) return { findings, parsed: false, parseError: { line: lineAt(content, syntaxError.from), parser: 'lezer-python' } };
   const queryFunctions = collectPythonQueryFunctions(root, content, externalQueryFunctions);
   const boundedBindings = collectPythonBoundedBindings(root, content);
 
   const walk = (node: PythonNode, ancestors: PythonNode[] = []): void => {
     const line = lineAt(content, node.from);
-    const bindings = boundedBindings.byOwner.get(pythonScopeOwner(ancestors, root)) || new Set<string>();
+    const bindings = boundedBindings.byOwner.get(pythonScopeOwner(ancestors, root)) || new Map<string, number>();
     const growthPattern = !ignoredAt(lines, line) ? pythonCopyOnGrow(node, ancestors, content, bindings) : undefined;
     if (growthPattern) {
       findings.push(structuralFinding({
@@ -1013,7 +1131,7 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
         recommendation: growthPattern === 'front-insert'
           ? 'Append in iteration order and reverse once if needed; inserting at index zero shifts the existing list every time.'
           : 'Mutate a local list/dict accumulator, or collect entries and construct the final value once after the loop.',
-        file: relativeFile, line, metadata: { parser: 'lezer-python', pattern: growthPattern }
+        file: relativeFile, line, metadata: { parser: 'lezer-python', pattern: growthPattern, complexity: 'O(n^2)' }
       }));
     }
     if (!ignoredAt(lines, line) && isQuadraticPythonFlatten(node, content)) {
@@ -1032,7 +1150,7 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
           ruleId: 'code/quadratic-nested-iteration', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
           title: 'Nested iteration can grow quadratically', evidence: sourceLine(content, line),
           recommendation: 'Index one collection with a dict/set or replace the nested scan with a single-pass join.',
-          file: relativeFile, line, metadata: { parser: 'lezer-python', outerLoopStart: lineAt(content, outerLoop.from) }
+          file: relativeFile, line, metadata: { parser: 'lezer-python', outerLoopStart: lineAt(content, outerLoop.from), complexity: 'O(n*m)' }
         }));
       }
       const signals = collectPythonLoopSignals(node, content, queryFunctions, externalQueryFunctions);
@@ -1046,9 +1164,13 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
         }
         const transaction = Boolean(signals.transactionNode);
         const query = !transaction && Boolean(signals.queryNode);
+        const iterationBound = pythonIterationBound(node, content, bindings)
+          ?? pythonDominatingGuardBound(node, content);
+        const defaultSeverity = hotspotSeverity(relativeFile);
         findings.push(structuralFinding({
           ruleId: transaction ? 'code/transaction-in-loop' : query ? 'code/synchronous-query-loop' : 'code/sequential-async-loop',
-          severity: hotspotSeverity(relativeFile), confidence: signals.indirectQuery ? 'MEDIUM' : 'HIGH', category: 'code',
+          severity: iterationBound !== undefined && iterationBound <= MAX_STATIC_ITERATION_BOUND && defaultSeverity === 'HIGH' ? 'MEDIUM' : defaultSeverity,
+          confidence: signals.indirectQuery ? 'MEDIUM' : 'HIGH', category: 'code',
           title: transaction ? 'Transaction boundary inside a loop' : query
             ? signals.crossFileQuery ? 'Imported function reaching the database is called inside a loop'
               : signals.indirectQuery ? 'Function reaching the database is called inside a loop' : 'Synchronous database operation inside a loop'
@@ -1062,6 +1184,8 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
           file: relativeFile, line: signalLine,
           metadata: {
             parser: 'lezer-python', loopStart: line,
+            complexity: 'O(n)', operationsPerIteration: 1,
+            iterationBound: iterationBound ?? 'input-dependent',
             pattern: transaction ? 'transaction' : query ? signals.crossFileQuery ? 'cross-file-database' : signals.indirectQuery ? 'indirect-database' : 'database' : 'await',
             ...(signals.queryPath ? { callPath: signals.queryPath } : {})
           }
@@ -1083,7 +1207,7 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
             ruleId: 'code/linear-search-in-loop', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
             title: 'Linear collection lookup is repeated inside a loop', evidence: sourceLine(content, line),
             recommendation: 'Build a dict or set once before the loop so each lookup is constant-time.',
-            file: relativeFile, line, metadata: { parser: 'lezer-python', method }
+            file: relativeFile, line, metadata: { parser: 'lezer-python', method, complexity: 'O(n*m)' }
           }));
         }
         if (name === 'sorted' || method === 'sort') {
@@ -1091,7 +1215,7 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
             ruleId: 'code/repeated-sort-in-loop', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'code',
             title: 'Collection is sorted repeatedly inside a loop', evidence: sourceLine(content, line),
             recommendation: 'Sort once before the loop or maintain an indexed structure instead of repeating O(n log n) work.',
-            file: relativeFile, line, metadata: { parser: 'lezer-python', method: name === 'sorted' ? 'sorted' : 'sort' }
+            file: relativeFile, line, metadata: { parser: 'lezer-python', method: name === 'sorted' ? 'sorted' : 'sort', complexity: 'O(n*m log m)' }
           }));
         }
       }
@@ -1099,17 +1223,24 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
       const boundedGather = /\bfor\b[\s\S]*\bin\s+(?:batch|chunk|limited|page|window)\w*\b/i.test(callText)
         || /\*\s*(?:batch|chunk|limited|page|window)\w*\b/i.test(callText)
         || /\b(?:bounded|limited|limiter|semaphore|workerPool)\w*\s*\(/i.test(callText)
-        || bindings.has(/\bfor\b[\s\S]*\bin\s+([A-Za-z_]\w*)\b/i.exec(callText)?.[1] || '');
+        || (bindings.get(/\bfor\b[\s\S]*\bin\s+([A-Za-z_]\w*)\b/i.exec(callText)?.[1] || '') ?? Number.POSITIVE_INFINITY) <= MAX_STATIC_ITERATION_BOUND;
       if (/^(?:asyncio\.)?gather$/i.test(name) && gatherWork && !boundedGather) {
         const queryFanout = pythonNodeContainsQuery(node, content, queryFunctions);
         const queryPath = pythonExternalQueryPath(node, content, externalQueryFunctions);
+        const gatherCollection = /\bfor\b[\s\S]*\bin\s+([A-Za-z_]\w*)\b/i.exec(callText)?.[1] || '';
+        const directSliceBound = /\bfor\b[\s\S]*\bin\s+[A-Za-z_]\w*\[\s*(?:0)?\s*:\s*(\d+)\s*\]/i.exec(callText)?.[1];
+        const taskUpperBound = bindings.get(gatherCollection) ?? (directSliceBound ? staticCount(Number(directSliceBound)) : undefined);
         findings.push(structuralFinding({
           ruleId: queryFanout ? 'code/unbounded-query-fanout' : 'code/unbounded-async-fanout', severity: 'HIGH', category: 'code',
           title: queryFanout ? 'Database query fan-out has no concurrency bound' : 'Async gather has no concurrency bound', evidence: sourceLine(content, line),
           recommendation: queryFanout
             ? 'Cap database concurrency with a semaphore or measured batches; prefer one bulk query when possible.'
             : 'Use a semaphore, worker queue, or measured batches to cap concurrent tasks.',
-          file: relativeFile, line, metadata: { parser: 'lezer-python', pattern: 'asyncio.gather', database: queryFanout, ...(queryPath ? { callPath: queryPath } : {}) }
+          file: relativeFile, line, metadata: {
+            parser: 'lezer-python', pattern: 'asyncio.gather', database: queryFanout,
+            complexity: 'O(n)', taskUpperBound: taskUpperBound ?? 'input-dependent',
+            ...(queryPath ? { callPath: queryPath } : {})
+          }
         }));
       }
 

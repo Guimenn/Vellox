@@ -60,6 +60,16 @@ describe('project-wide semantic call graph', () => {
     expect(result.filter(item => item.ruleId === 'code/query-in-loop')).toHaveLength(2);
   });
 
+  it('resolves TypeScript constructor-injected repositories', () => {
+    const result = findings({
+      'src/repository.ts': 'export class UserRepository { async find(id) { return prisma.user.findUnique({ where: { id } }); } }',
+      'src/service.ts': "import { UserRepository } from './repository';\nexport class UserService { constructor(private readonly users: UserRepository) {} async hydrate(ids) { for (const id of ids) await this.users.find(id); } }"
+    }, 'src/service.ts');
+    const finding = result.find(item => item.ruleId === 'code/query-in-loop');
+
+    expect(finding?.metadata?.callPath).toContain('src/repository.ts:find -> database');
+  });
+
   it('upgrades cross-file Promise fan-out to database-specific evidence', () => {
     const result = findings({
       'src/repository.ts': 'export async function fetchUser(id) { return prisma.user.findUnique({ where: { id } }); }',
@@ -78,6 +88,29 @@ describe('project-wide semantic call graph', () => {
       'src/service.ts': "import { fetchUser } from '@data/users';\nexport async function hydrate(ids) { for (const id of ids) await fetchUser(id); }"
     });
     const result = scanProject(root, 'test').findings.filter(item => item.file === 'src/service.ts');
+
+    expect(result.some(item => item.ruleId === 'code/query-in-loop')).toBe(true);
+  });
+
+  it('uses the nearest monorepo tsconfig and inherited path aliases', () => {
+    const root = project({
+      'tsconfig.base.json': JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@shared/*': ['packages/shared/src/*'] } } }),
+      'packages/api/tsconfig.json': '{\n  // package-local aliases\n  "extends": "../../tsconfig.base.json",\n  "compilerOptions": { "baseUrl": ".", "paths": { "@api/*": ["src/*"] }, },\n}',
+      'packages/shared/src/users.ts': 'export async function fetchUser(id) { return prisma.user.findUnique({ where: { id } }); }',
+      'packages/api/src/service.ts': "import { fetchUser } from '@shared/users';\nexport async function hydrate(ids) { for (const id of ids) await fetchUser(id); }"
+    });
+    const result = scanProject(root, 'test').findings.filter(item => item.file === 'packages/api/src/service.ts');
+
+    expect(result.some(item => item.ruleId === 'code/query-in-loop')).toBe(true);
+  });
+
+  it('resolves imports between named workspace packages', () => {
+    const result = findings({
+      'packages/data/package.json': JSON.stringify({ name: '@acme/data', source: 'src/index.ts' }),
+      'packages/data/src/index.ts': 'export async function fetchUser(id) { return prisma.user.findUnique({ where: { id } }); }',
+      'packages/api/package.json': JSON.stringify({ name: '@acme/api' }),
+      'packages/api/src/service.ts': "import { fetchUser } from '@acme/data';\nexport async function hydrate(ids) { for (const id of ids) await fetchUser(id); }"
+    }, 'packages/api/src/service.ts');
 
     expect(result.some(item => item.ruleId === 'code/query-in-loop')).toBe(true);
   });
@@ -122,6 +155,16 @@ describe('project-wide semantic call graph', () => {
     }, 'app/service.py');
 
     expect(result.filter(item => item.ruleId === 'code/synchronous-query-loop')).toHaveLength(2);
+  });
+
+  it('resolves Python constructor-injected repositories with type evidence', () => {
+    const result = findings({
+      'app/repository.py': 'class UserRepository:\n    def find(self, user_id):\n        return session.execute(select(User).where(User.id == user_id))\n',
+      'app/service.py': 'from app.repository import UserRepository\n\nclass UserService:\n    def __init__(self, users: UserRepository):\n        self.users = users\n\n    def hydrate(self, ids):\n        for user_id in ids:\n            self.users.find(user_id)\n'
+    }, 'app/service.py');
+    const finding = result.find(item => item.ruleId === 'code/synchronous-query-loop');
+
+    expect(finding?.metadata?.callPath).toContain('app/repository.py:find -> database');
   });
 
   it('does not invent database reachability for harmless imports or import cycles', () => {

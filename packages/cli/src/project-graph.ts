@@ -88,6 +88,14 @@ function jsName(node: any, content: string): string {
   return '';
 }
 
+function jsTypeName(node: any, content: string): string {
+  let current = node?.type === 'TSParameterProperty' ? node.parameter : node;
+  current = current?.typeAnnotation?.typeAnnotation;
+  if (current?.type === 'TSOptionalType') current = current.typeAnnotation;
+  if (current?.type === 'TSTypeReference') return jsName(current.typeName, content);
+  return '';
+}
+
 function javascriptDatabaseCall(node: any, content: string): boolean {
   if (node?.type !== 'CallExpression' && node?.type !== 'OptionalCallExpression') return false;
   const name = jsName(node.callee, content);
@@ -110,22 +118,164 @@ function sourceCandidates(base: string, extensions: string[]): string[] {
   return candidates.map(normalize);
 }
 
-function readTsConfig(root: string): { baseUrl: string; paths: Array<{ pattern: string; targets: string[] }> } {
-  const configPath = path.join(root, 'tsconfig.json');
-  if (!fs.existsSync(configPath)) return { baseUrl: '.', paths: [] };
-  try {
-    const raw = fs.readFileSync(configPath, 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/^\s*\/\/.*$/gm, '')
-      .replace(/,\s*([}\]])/g, '$1');
-    const config = JSON.parse(raw) as { compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> } };
-    return {
-      baseUrl: normalize(config.compilerOptions?.baseUrl || '.'),
-      paths: Object.entries(config.compilerOptions?.paths || {}).map(([pattern, targets]) => ({ pattern, targets }))
-    };
-  } catch {
-    return { baseUrl: '.', paths: [] };
+interface JavaScriptResolverConfig {
+  baseUrl: string;
+  paths: Array<{ pattern: string; targets: string[] }>;
+  configured: boolean;
+}
+
+interface WorkspacePackage {
+  directory: string;
+  entries: string[];
+}
+
+function stripJsonComments(value: string): string {
+  let result = '';
+  let quote = '';
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    const next = value[index + 1];
+    if (lineComment) {
+      if (character === '\n') {
+        lineComment = false;
+        result += character;
+      }
+      continue;
+    }
+    if (blockComment) {
+      if (character === '*' && next === '/') {
+        blockComment = false;
+        index += 1;
+      } else if (character === '\n') result += character;
+      continue;
+    }
+    if (quote) {
+      result += character;
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = '';
+      continue;
+    }
+    if (character === '"') {
+      quote = character;
+      result += character;
+      continue;
+    }
+    if (character === '/' && next === '/') {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === '/' && next === '*') {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    result += character;
   }
+  return result;
+}
+
+function readJsonConfig(filePath: string, maxFileBytes = Number.MAX_SAFE_INTEGER): Record<string, any> | undefined {
+  try {
+    if (fs.statSync(filePath).size > maxFileBytes) return undefined;
+    const raw = stripJsonComments(fs.readFileSync(filePath, 'utf8'))
+      .replace(/,\s*([}\]])/g, '$1');
+    return JSON.parse(raw) as Record<string, any>;
+  } catch {
+    return undefined;
+  }
+}
+
+function localConfigPath(root: string, fromFile: string, specifier: string): string | undefined {
+  if (!specifier.startsWith('.')) return undefined;
+  const base = path.resolve(path.dirname(fromFile), specifier);
+  const candidates = [base, `${base}.json`, path.join(base, 'tsconfig.json')];
+  return candidates.find(candidate => {
+    const relative = path.relative(root, candidate);
+    return relative !== '..' && !relative.startsWith(`..${path.sep}`) && fs.existsSync(candidate) && fs.statSync(candidate).isFile();
+  });
+}
+
+function readTsConfig(root: string, configPath: string, maxFileBytes: number, visited = new Set<string>()): JavaScriptResolverConfig {
+  const resolvedPath = path.resolve(configPath);
+  if (visited.has(resolvedPath)) return { baseUrl: '.', paths: [], configured: true };
+  visited.add(resolvedPath);
+  const config = readJsonConfig(resolvedPath, maxFileBytes);
+  if (!config) return { baseUrl: normalize(path.relative(root, path.dirname(resolvedPath)) || '.'), paths: [], configured: true };
+  const parentPath = typeof config.extends === 'string' ? localConfigPath(root, resolvedPath, config.extends) : undefined;
+  const parent = parentPath ? readTsConfig(root, parentPath, maxFileBytes, visited) : undefined;
+  const compilerOptions = config.compilerOptions || {};
+  const configDirectory = normalize(path.relative(root, path.dirname(resolvedPath)) || '.');
+  const baseUrl = typeof compilerOptions.baseUrl === 'string'
+    ? normalize(path.posix.join(configDirectory, compilerOptions.baseUrl))
+    : parent?.baseUrl || configDirectory;
+  const declaredPaths = compilerOptions.paths && typeof compilerOptions.paths === 'object'
+    ? Object.entries(compilerOptions.paths as Record<string, unknown>)
+      .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].every(value => typeof value === 'string'))
+      .map(([pattern, targets]) => ({ pattern, targets: targets.map(target => normalize(path.posix.join(baseUrl, target))) }))
+    : [];
+  const overridden = new Set(declaredPaths.map(mapping => mapping.pattern));
+  return {
+    baseUrl,
+    paths: [...declaredPaths, ...(parent?.paths || []).filter(mapping => !overridden.has(mapping.pattern))],
+    configured: true
+  };
+}
+
+function nearestJavaScriptConfig(root: string, file: string, maxFileBytes: number): JavaScriptResolverConfig {
+  let directory = path.dirname(path.join(root, file));
+  while (true) {
+    for (const name of ['tsconfig.json', 'jsconfig.json']) {
+      const candidate = path.join(directory, name);
+      if (fs.existsSync(candidate)) return readTsConfig(root, candidate, maxFileBytes);
+    }
+    if (directory === root) break;
+    const parent = path.dirname(directory);
+    if (parent === directory || path.relative(root, parent).startsWith('..')) break;
+    directory = parent;
+  }
+  return { baseUrl: '.', paths: [], configured: false };
+}
+
+function conditionalExportTarget(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ['import', 'require', 'default', 'types']) {
+    const target = conditionalExportTarget(record[key]);
+    if (target) return target;
+  }
+  return undefined;
+}
+
+function collectWorkspacePackages(root: string, sources: Map<string, string>, maxFileBytes: number): Map<string, WorkspacePackage> {
+  const manifests = new Set<string>();
+  for (const file of sources.keys()) {
+    let directory = path.dirname(path.join(root, file));
+    while (true) {
+      const manifest = path.join(directory, 'package.json');
+      if (fs.existsSync(manifest)) manifests.add(manifest);
+      if (directory === root) break;
+      const parent = path.dirname(directory);
+      if (parent === directory || path.relative(root, parent).startsWith('..')) break;
+      directory = parent;
+    }
+  }
+  const packages = new Map<string, WorkspacePackage>();
+  for (const manifest of manifests) {
+    const pkg = readJsonConfig(manifest, maxFileBytes);
+    if (typeof pkg?.name !== 'string') continue;
+    const directory = normalize(path.relative(root, path.dirname(manifest)) || '.');
+    const entries = [conditionalExportTarget(pkg.exports?.['.'] ?? pkg.exports), pkg.module, pkg.main, pkg.source, 'src/index', 'index']
+      .filter((value): value is string => typeof value === 'string')
+      .map(value => normalize(path.posix.join(directory, value)));
+    packages.set(pkg.name, { directory, entries });
+  }
+  return packages;
 }
 
 function wildcardMatch(pattern: string, value: string): string | undefined {
@@ -136,18 +286,42 @@ function wildcardMatch(pattern: string, value: string): string | undefined {
   return value.startsWith(prefix) && value.endsWith(suffix) ? value.slice(prefix.length, value.length - suffix.length) : undefined;
 }
 
-function createJavaScriptResolver(root: string, sources: Map<string, string>): (file: string, specifier: string) => string | undefined {
-  const config = readTsConfig(root);
+function createJavaScriptResolver(root: string, sources: Map<string, string>, maxFileBytes: number): (file: string, specifier: string) => string | undefined {
   const existing = new Set(sources.keys());
+  const configCache = new Map<string, JavaScriptResolverConfig>();
+  const workspacePackages = collectWorkspacePackages(root, sources, maxFileBytes);
   const resolveBase = (base: string): string | undefined => sourceCandidates(base, JS_EXTENSIONS).find(candidate => existing.has(candidate));
   return (file, specifier) => {
     if (specifier.startsWith('.')) return resolveBase(path.posix.join(path.posix.dirname(file), specifier));
+    let config = configCache.get(file);
+    if (!config) {
+      config = nearestJavaScriptConfig(root, file, maxFileBytes);
+      configCache.set(file, config);
+    }
     for (const mapping of config.paths) {
       const wildcard = wildcardMatch(mapping.pattern, specifier);
       if (wildcard === undefined) continue;
       for (const target of mapping.targets) {
         const mapped = target.replace('*', wildcard);
-        const resolved = resolveBase(path.posix.join(config.baseUrl, mapped));
+        const resolved = resolveBase(mapped);
+        if (resolved) return resolved;
+      }
+    }
+    if (config.configured) {
+      const fromBaseUrl = resolveBase(path.posix.join(config.baseUrl, specifier));
+      if (fromBaseUrl) return fromBaseUrl;
+    }
+    for (const [packageName, workspace] of workspacePackages) {
+      if (specifier !== packageName && !specifier.startsWith(`${packageName}/`)) continue;
+      const subpath = specifier === packageName ? '' : specifier.slice(packageName.length + 1);
+      if (!subpath) {
+        for (const entry of workspace.entries) {
+          const resolved = resolveBase(entry);
+          if (resolved) return resolved;
+        }
+      }
+      for (const base of [path.posix.join(workspace.directory, subpath), path.posix.join(workspace.directory, 'src', subpath)]) {
+        const resolved = resolveBase(base);
         if (resolved) return resolved;
       }
     }
@@ -328,6 +502,32 @@ function parseJavaScriptModule(file: string, content: string, resolveModule: (fi
         }
       }
     }
+    if ((node?.type === 'ClassMethod' || node?.type === 'ClassPrivateMethod') && node.kind === 'constructor') {
+      const parameters = new Map<string, ImportBinding>();
+      for (const rawParameter of node.params || []) {
+        const parameter = rawParameter?.type === 'TSParameterProperty' ? rawParameter.parameter : rawParameter;
+        const parameterName = jsName(parameter, content);
+        const typeName = jsTypeName(rawParameter, content);
+        const importedClass = imports.find(item => !item.namespace && item.local === typeName);
+        if (!parameterName || !importedClass) continue;
+        parameters.set(parameterName, importedClass);
+        if (rawParameter?.type === 'TSParameterProperty') {
+          imports.push({ local: `this.${parameterName}`, targetFile: importedClass.targetFile, targetExport: importedClass.targetExport, namespace: true });
+        }
+      }
+      const inspectAssignments = (candidate: any): void => {
+        if (candidate?.type === 'AssignmentExpression') {
+          const left = jsName(candidate.left, content);
+          const right = jsName(candidate.right, content);
+          const binding = parameters.get(right);
+          if (binding && left.startsWith('this.')) {
+            imports.push({ local: left, targetFile: binding.targetFile, targetExport: binding.targetExport, namespace: true });
+          }
+        }
+        for (const child of jsChildren(candidate)) inspectAssignments(child);
+      };
+      inspectAssignments(node.body);
+    }
     for (const child of jsChildren(node)) visitInstances(child);
   };
   visitInstances(program);
@@ -341,9 +541,17 @@ function pythonChildren(node: PythonNode): PythonNode[] {
   return children;
 }
 
-function pythonHasError(node: PythonNode): boolean {
-  if (node.type?.isError || node.name === '⚠') return true;
-  return pythonChildren(node).some(pythonHasError);
+function pythonAsyncYieldRecovery(node: PythonNode, content: string): boolean {
+  if (node.from !== node.to || content[node.from] !== '\n') return false;
+  const lineStart = content.lastIndexOf('\n', Math.max(0, node.from - 1)) + 1;
+  if (!/^yield(?:\s|$)/.test(content.slice(lineStart, node.from).trim())) return false;
+  const definitions = [...content.slice(0, lineStart).matchAll(/^\s*(async\s+)?def\s+/gm)];
+  return Boolean(definitions.at(-1)?.[1]);
+}
+
+function pythonHasError(node: PythonNode, content: string): boolean {
+  if ((node.type?.isError || node.name === '⚠') && !pythonAsyncYieldRecovery(node, content)) return true;
+  return pythonChildren(node).some(child => pythonHasError(child, content));
 }
 
 function pythonCallName(node: PythonNode, content: string): string {
@@ -425,7 +633,7 @@ function parsePythonModule(file: string, content: string, resolveModule: (file: 
   } catch {
     return undefined;
   }
-  if (pythonHasError(root)) return undefined;
+  if (pythonHasError(root, content)) return undefined;
   const functions: FunctionSymbol[] = [];
   const localSymbols = new Map<string, string>();
   const exports = new Map<string, string>();
@@ -435,6 +643,21 @@ function parsePythonModule(file: string, content: string, resolveModule: (file: 
     if (constructor) parsedImports.imports.push({
       local: assignment[1]!, targetFile: constructor.targetFile, targetExport: constructor.targetExport, namespace: true
     });
+  }
+  for (const constructor of content.matchAll(/^(\s*)(?:async\s+)?def\s+__init__\s*\(([^)]*)\)\s*(?:->\s*[^:]+)?\s*:\s*\n([\s\S]*?)(?=^\1(?:async\s+def|def|class)\b|\s*$)/gm)) {
+    const typedParameters = new Map<string, ImportBinding>();
+    for (const parameter of constructor[2]!.split(',')) {
+      const match = /\b([A-Za-z_]\w*)\s*:\s*(?:[A-Za-z_]\w*\[)?([A-Za-z_]\w*)/.exec(parameter.trim());
+      if (!match) continue;
+      const binding = parsedImports.imports.find(item => !item.namespace && item.local === match[2]);
+      if (binding) typedParameters.set(match[1]!, binding);
+    }
+    for (const assignment of constructor[3]!.matchAll(/\bself\.([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\b/g)) {
+      const binding = typedParameters.get(assignment[2]!);
+      if (binding) parsedImports.imports.push({
+        local: `self.${assignment[1]}`, targetFile: binding.targetFile, targetExport: binding.targetExport, namespace: true
+      });
+    }
   }
 
   const collect = (node: PythonNode, ancestors: PythonNode[] = []): void => {
@@ -508,9 +731,9 @@ function resolveImportedCall(modules: Map<string, ModuleSummary>, module: Module
   return undefined;
 }
 
-export function buildProjectSemanticIndex(root: string, sources: Map<string, string>): ProjectSemanticIndex {
+export function buildProjectSemanticIndex(root: string, sources: Map<string, string>, maxFileBytes = 2_000_000): ProjectSemanticIndex {
   const normalizedSources = new Map([...sources].map(([file, content]) => [normalize(file), content]));
-  const resolveJavaScript = createJavaScriptResolver(root, normalizedSources);
+  const resolveJavaScript = createJavaScriptResolver(root, normalizedSources, maxFileBytes);
   const resolvePython = createPythonResolver(normalizedSources);
   const modules = new Map<string, ModuleSummary>();
 

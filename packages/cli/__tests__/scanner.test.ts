@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildMigration, evaluateBudgets, toSarif } from '../src/formatters.js';
+import { buildMigration, evaluateBudgets, formatMarkdown, formatPretty, toSarif } from '../src/formatters.js';
 import { analyzeSqlQuery, scanProject } from '../src/scanner.js';
 
 const temporaryDirectories: string[] = [];
@@ -45,6 +45,45 @@ afterEach(() => {
 });
 
 describe('Vellox project scanner contract', () => {
+  it('reports oversized files instead of silently counting them as inspected', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'oversized.ts'), `// ${'x'.repeat(2_000_001)}`);
+
+    expect(() => scanProject(directory, 'test', { maxFileBytes: 0 })).toThrow('positive integer');
+
+    const report = scanProject(directory, 'test');
+    const issue = report.coverage?.issues.find(item => item.file === 'src/oversized.ts');
+
+    expect(report.coverage?.complete).toBe(false);
+    expect(report.coverage?.filesDiscovered).toBe(report.summary.filesScanned + 1);
+    expect(report.coverage?.filesSkipped).toBe(1);
+    expect(issue).toMatchObject({ reason: 'file-too-large', limitBytes: 2_000_000 });
+    expect(formatPretty(report)).toContain('src/oversized.ts: file-too-large');
+    expect(formatMarkdown(report)).toContain('Analysis coverage');
+    expect(JSON.stringify(toSarif(report))).toContain('file-too-large');
+  });
+
+  it('exposes parser fallback and lets CI reject incomplete analysis', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'broken.ts'), 'export function broken( {');
+    fs.writeFileSync(path.join(directory, 'src', 'async_generator.py'), 'async def lifespan():\n    yield\n    cleanup()\n');
+
+    const report = scanProject(directory, 'test');
+    const evaluation = evaluateBudgets(report, {
+      maxCritical: Number.MAX_SAFE_INTEGER,
+      maxHigh: Number.MAX_SAFE_INTEGER,
+      maxTotal: null,
+      failOnSecrets: false,
+      failOnIncompleteAnalysis: true
+    });
+
+    expect(report.coverage?.fallbackFiles).toBe(1);
+    expect(report.coverage?.issues).toContainEqual({ file: 'src/broken.ts', reason: 'parse-fallback', line: 1, parser: 'babel' });
+    expect(report.coverage?.issues.some(item => item.file === 'src/async_generator.py')).toBe(false);
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.violations[0]).toContain('failOnIncompleteAnalysis=true');
+  });
+
   it('produces evidence-backed findings and SQL from the inspected fixture', () => {
     const report = scanProject(fixture(), 'test');
 
@@ -296,6 +335,57 @@ export async function processAll(items) {
         'code/repeated-sort-in-loop'
       ]));
     }
+  });
+
+  it('reports conservative complexity and only claims iteration bounds proven by syntax', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'bounded-cost.ts'), `export async function hydrate(ids) {
+  for (const id of ids.slice(0, 12)) await prisma.user.findUnique({ where: { id } });
+}
+`);
+    fs.writeFileSync(path.join(directory, 'src', 'bounded_cost.py'), `def hydrate(ids):
+    for user_id in ids[:8]:
+        session.execute(select(User).where(User.id == user_id))
+`);
+    fs.writeFileSync(path.join(directory, 'src', 'guarded-cost.ts'), `export async function hydrate(ids) {
+  if (ids.length > 25) throw new Error('too many ids');
+  for (const id of ids) await prisma.user.findUnique({ where: { id } });
+}
+`);
+    fs.writeFileSync(path.join(directory, 'src', 'guarded_cost.py'), `def hydrate(ids):
+    if len(ids) >= 31:
+        raise ValueError('too many ids')
+    for user_id in ids:
+        session.execute(select(User).where(User.id == user_id))
+`);
+    fs.writeFileSync(path.join(directory, 'src', 'large-bound.ts'), `export async function hydrate(ids) {
+  const selected = ids.slice(0, 1000);
+  for (const id of selected) await prisma.user.findUnique({ where: { id } });
+}
+`);
+    fs.writeFileSync(path.join(directory, 'src', 'large-fanout.ts'), `export async function hydrate(ids) {
+  const selected = ids.slice(0, 1000);
+  return Promise.all(selected.map(id => prisma.user.findUnique({ where: { id } })));
+}
+`);
+
+    const report = scanProject(directory, 'test');
+    const javascript = report.findings.find(item => item.file === 'src/bounded-cost.ts' && item.ruleId === 'code/query-in-loop');
+    const python = report.findings.find(item => item.file === 'src/bounded_cost.py' && item.ruleId === 'code/synchronous-query-loop');
+    const unbounded = report.findings.find(item => item.file === 'src/orders.ts' && item.ruleId === 'code/query-in-loop');
+    const guardedJavaScript = report.findings.find(item => item.file === 'src/guarded-cost.ts' && item.ruleId === 'code/query-in-loop');
+    const guardedPython = report.findings.find(item => item.file === 'src/guarded_cost.py' && item.ruleId === 'code/synchronous-query-loop');
+    const largeBound = report.findings.find(item => item.file === 'src/large-bound.ts' && item.ruleId === 'code/query-in-loop');
+    const largeFanout = report.findings.find(item => item.file === 'src/large-fanout.ts' && item.ruleId === 'code/unbounded-query-fanout');
+
+    expect(javascript).toMatchObject({ severity: 'MEDIUM', metadata: { complexity: 'O(n)', iterationBound: 12, operationsPerIteration: 1 } });
+    expect(python).toMatchObject({ severity: 'MEDIUM', metadata: { complexity: 'O(n)', iterationBound: 8, operationsPerIteration: 1 } });
+    expect(unbounded?.metadata?.iterationBound).toBe('input-dependent');
+    expect(guardedJavaScript).toMatchObject({ severity: 'MEDIUM', metadata: { iterationBound: 25 } });
+    expect(guardedPython).toMatchObject({ severity: 'MEDIUM', metadata: { iterationBound: 30 } });
+    expect(largeBound).toMatchObject({ severity: 'HIGH', metadata: { iterationBound: 1000 } });
+    expect(largeFanout?.metadata?.taskUpperBound).toBe(1000);
+    expect(formatPretty(report)).toContain('at most 12 (statically proven)');
   });
 
   it('does not label indexed lookups or statically bounded loops as quadratic', () => {

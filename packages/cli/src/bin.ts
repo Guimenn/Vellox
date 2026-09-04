@@ -54,7 +54,7 @@ function positionals(afterCommand = true): string[] {
   for (let index = afterCommand ? 1 : 0; index < args.length; index += 1) {
     const value = args[index]!;
     if (value.startsWith('--')) {
-      if (!value.includes('=') && !['--no-write', '--allow-secrets'].includes(value)) index += 1;
+      if (!value.includes('=') && !['--no-write', '--allow-secrets', '--allow-incomplete'].includes(value)) index += 1;
       continue;
     }
     if (/^-[a-z]$/i.test(value)) continue;
@@ -85,7 +85,10 @@ function writeOutput(value: string, defaultPath?: string): void {
 }
 
 function scanAndPersist(target: string): VelloxReport {
-  const report = scanProject(target, VERSION);
+  const config = loadConfig(target);
+  const report = scanProject(target, VERSION, {
+    maxFileBytes: positiveIntegerOption('--max-file-bytes', config.analysis.maxFileBytes)
+  });
   if (!hasFlag('--no-write')) writeJson(reportPathFor(target), report);
   return report;
 }
@@ -180,6 +183,12 @@ function numberOption(name: string, fallback: number): number {
   return parsed;
 }
 
+function positiveIntegerOption(name: string, fallback: number): number {
+  const parsed = numberOption(name, fallback);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(name + ' must be a positive integer.');
+  return parsed;
+}
+
 function check(target: string): void {
   const config = loadConfig(target);
   const report = scanAndPersist(target);
@@ -187,7 +196,8 @@ function check(target: string): void {
     maxCritical: numberOption('--max-critical', config.budgets.maxCritical),
     maxHigh: numberOption('--max-high', config.budgets.maxHigh),
     maxTotal: option('--max-total') === undefined ? config.budgets.maxTotal : numberOption('--max-total', Number.MAX_SAFE_INTEGER),
-    failOnSecrets: hasFlag('--allow-secrets') ? false : config.budgets.failOnSecrets
+    failOnSecrets: hasFlag('--allow-secrets') ? false : config.budgets.failOnSecrets,
+    failOnIncompleteAnalysis: hasFlag('--allow-incomplete') ? false : config.budgets.failOnIncompleteAnalysis
   };
   const baselineOption = option('--baseline') || config.baselinePath;
   const baselinePath = baselineOption ? resolveFromTarget(target, baselineOption) : undefined;
@@ -441,10 +451,10 @@ function help(): void {
   console.log([
     '',
     'Usage:',
-    '  vellox [path] [--format pretty|json|sarif] [--output file]',
+    '  vellox [path] [--format pretty|json|sarif] [--output file] [--max-file-bytes N]',
     '  vellox scan [path|"SQL"] [--format pretty|json|sarif]',
     '  vellox optimize [path|query.sql|"SQL"] [--format pretty|json|sarif]',
-    '  vellox check [path] [--baseline file] [--max-critical N] [--max-high N]',
+    '  vellox check [path] [--baseline file] [--max-critical N] [--max-high N] [--allow-incomplete]',
     '  vellox baseline [path] [--output file]',
     '  vellox fix [path] [--report file] [--output migration.sql]',
     '  vellox report [path] [--report file] [--output report.md]',

@@ -58,6 +58,25 @@ describe('published CLI behavior', () => {
     expect(result.stderr).toContain('high finding(s) exceed');
   });
 
+  it('fails closed on incomplete coverage and supports an explicit override', () => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), 'vellox-coverage-e2e-'));
+    fs.writeFileSync(path.join(target, 'package.json'), JSON.stringify({ name: 'coverage-e2e' }));
+    fs.writeFileSync(path.join(target, 'large.ts'), `export const payload = '${'x'.repeat(200)}';`);
+    try {
+      const scan = JSON.parse(execFileSync(process.execPath, [cli, 'scan', target, '--format', 'json', '--no-write', '--max-file-bytes', '100'], { encoding: 'utf8' }));
+      expect(scan.coverage).toMatchObject({ complete: false, filesSkipped: 1 });
+
+      const rejected = spawnSync(process.execPath, [cli, 'check', target, '--max-file-bytes', '100'], { encoding: 'utf8' });
+      expect(rejected.status).toBe(1);
+      expect(rejected.stderr).toContain('failOnIncompleteAnalysis=true');
+
+      const allowed = spawnSync(process.execPath, [cli, 'check', target, '--max-file-bytes', '100', '--allow-incomplete'], { encoding: 'utf8' });
+      expect(allowed.status).toBe(0);
+    } finally {
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+  });
+
   it('accepts case-sensitive project paths as the default command', () => {
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'vellox-case-e2e-'));
     const target = path.join(parent, 'CaseSensitiveProject');

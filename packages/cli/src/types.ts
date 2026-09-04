@@ -32,6 +32,29 @@ export interface VelloxSummary {
   reviewableSqlFixes: number;
 }
 
+export type AnalysisIssueReason = 'file-too-large' | 'read-error' | 'directory-read-error' | 'max-depth' | 'parse-fallback';
+
+export interface VelloxAnalysisIssue {
+  file: string;
+  reason: AnalysisIssueReason;
+  line?: number;
+  parser?: 'babel' | 'lezer-python';
+  sizeBytes?: number;
+  limitBytes?: number;
+}
+
+export interface VelloxCoverage {
+  complete: boolean;
+  filesDiscovered: number;
+  filesAnalyzed: number;
+  filesSkipped: number;
+  structuralFiles: number;
+  fallbackFiles: number;
+  semanticModules: number;
+  semanticFunctions: number;
+  issues: VelloxAnalysisIssue[];
+}
+
 export interface VelloxReport {
   schemaVersion: '1.0';
   tool: { name: 'vellox'; version: string };
@@ -39,6 +62,7 @@ export interface VelloxReport {
   target: string;
   databaseContext: { detected: boolean; evidence: string[] };
   summary: VelloxSummary;
+  coverage?: VelloxCoverage;
   metrics?: Record<string, string | number | boolean>;
   findings: VelloxFinding[];
 }
@@ -48,6 +72,11 @@ export interface VelloxBudgets {
   maxHigh: number;
   maxTotal: number | null;
   failOnSecrets: boolean;
+  failOnIncompleteAnalysis?: boolean;
+}
+
+export interface VelloxAnalysisConfig {
+  maxFileBytes: number;
 }
 
 export interface VelloxConfig {
@@ -55,6 +84,7 @@ export interface VelloxConfig {
   baselinePath?: string;
   ignore?: string[];
   rules?: Record<string, false | Severity | { enabled?: boolean; severity?: Severity }>;
+  analysis: VelloxAnalysisConfig;
   budgets: VelloxBudgets;
 }
 

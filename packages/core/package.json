@@ -1,6 +1,6 @@
 {
   "name": "@vellox/core",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Core data models, streaming logarithmic histograms, cardinality control, and ring buffer for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

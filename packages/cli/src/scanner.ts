@@ -7,6 +7,10 @@ import { buildProjectSemanticIndex } from './project-graph.js';
 import { scanJavaScriptStructure, scanPythonStructure } from './structural-code.js';
 import { Severity, VelloxConfig, VelloxFinding, VelloxFindingInput, VelloxReport } from './types.js';
 
+export interface ScanOptions {
+  maxFileBytes?: number;
+}
+
 const IGNORED_DIRECTORIES = new Set([
   '.git', '.next', '.nuxt', '.output', '.turbo', '.vellox',
   '.pytest_cache', '.ruff_cache', '.test-build', '.teste-build', '__pycache__',
@@ -53,15 +57,20 @@ function ignoreMatcher(root: string, config: VelloxConfig): (relativePath: strin
   };
 }
 
-function walk(root: string, config: VelloxConfig): string[] {
+function walk(root: string, config: VelloxConfig): { files: string[]; issues: NonNullable<VelloxReport['coverage']>['issues'] } {
   const files: string[] = [];
+  const issues: NonNullable<VelloxReport['coverage']>['issues'] = [];
   const ignored = ignoreMatcher(root, config);
   const visit = (directory: string, depth: number): void => {
-    if (depth > 12) return;
+    if (depth > 12) {
+      issues.push({ file: path.relative(root, directory).replace(/\\/g, '/') || '.', reason: 'max-depth' });
+      return;
+    }
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(directory, { withFileTypes: true });
     } catch {
+      issues.push({ file: path.relative(root, directory).replace(/\\/g, '/') || '.', reason: 'directory-read-error' });
       return;
     }
     for (const entry of entries) {
@@ -76,7 +85,7 @@ function walk(root: string, config: VelloxConfig): string[] {
     }
   };
   visit(root, 0);
-  return files.sort();
+  return { files: files.sort(), issues };
 }
 
 function configuredRule(ruleId: string, config: VelloxConfig): false | Severity | { enabled?: boolean; severity?: Severity } | undefined {
@@ -93,7 +102,7 @@ function applyRuleConfiguration(findings: VelloxFinding[], config: VelloxConfig)
   });
 }
 
-export function detectDatabaseContext(root: string, files: string[]): { detected: boolean; evidence: string[] } {
+export function detectDatabaseContext(root: string, files: string[], contents?: ReadonlyMap<string, string>): { detected: boolean; evidence: string[] } {
   const evidence = new Set<string>();
   const dependencyNames = [
     '@prisma/client', 'drizzle-orm', 'ioredis', 'knex', 'mongoose', 'mongodb', 'mysql', 'mysql2',
@@ -102,7 +111,9 @@ export function detectDatabaseContext(root: string, files: string[]): { detected
 
   for (const file of files.filter(candidate => path.basename(candidate) === 'package.json')) {
     try {
-      const pkg = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, Record<string, string>>;
+      const content = contents?.get(file) ?? (!contents ? fs.readFileSync(file, 'utf8') : undefined);
+      if (content === undefined) continue;
+      const pkg = JSON.parse(content) as Record<string, Record<string, string>>;
       const dependencies = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
       const matches = dependencyNames.filter(name => dependencies[name]);
       if (matches.length) evidence.add(`${path.relative(root, file)}: ${matches.join(', ')}`);
@@ -111,11 +122,13 @@ export function detectDatabaseContext(root: string, files: string[]): { detected
 
   for (const file of files) {
     const relative = path.relative(root, file);
-    if (file.endsWith('.prisma')) evidence.add(`${relative}: Prisma schema`);
-    if (file.endsWith('.sql') && /(?:migration|schema)/i.test(relative)) evidence.add(`${relative}: SQL schema/migration`);
+    const available = !contents || contents.has(file);
+    if (available && file.endsWith('.prisma')) evidence.add(`${relative}: Prisma schema`);
+    if (available && file.endsWith('.sql') && /(?:migration|schema)/i.test(relative)) evidence.add(`${relative}: SQL schema/migration`);
     if (/requirements\.txt$|pyproject\.toml$|Pipfile$/i.test(file)) {
       try {
-        const content = fs.readFileSync(file, 'utf8');
+        const content = contents?.get(file) ?? (!contents ? fs.readFileSync(file, 'utf8') : undefined);
+        if (content === undefined) continue;
         const matches = content.match(/sqlalchemy|psycopg|asyncpg|pymongo|redis|pymysql/gi);
         if (matches?.length) evidence.add(`${relative}: ${[...new Set(matches.map(value => value.toLowerCase()))].join(', ')}`);
       } catch {}
@@ -993,29 +1006,43 @@ export function analyzeSqlDocument(content: string, file = 'inline.sql'): Vellox
   return scanSqlFileQueries(content, file);
 }
 
-export function scanProject(targetDirectory: string, version: string): VelloxReport {
+export function scanProject(targetDirectory: string, version: string, options: ScanOptions = {}): VelloxReport {
   const target = path.resolve(targetDirectory);
   if (!fs.existsSync(target) || !fs.statSync(target).isDirectory()) {
     throw new Error(`Target directory does not exist: ${target}`);
   }
   const config = loadConfig(target);
-  const files = walk(target, config);
-  const databaseContext = detectDatabaseContext(target, files);
+  const maxFileBytes = options.maxFileBytes ?? config.analysis.maxFileBytes;
+  if (!Number.isSafeInteger(maxFileBytes) || maxFileBytes <= 0) {
+    throw new Error('maxFileBytes must be a positive integer.');
+  }
+  const discovery = walk(target, config);
+  const files = discovery.files;
   const findings: VelloxFinding[] = [];
   const contents = new Map<string, string>();
-
+  const coverageIssues: NonNullable<VelloxReport['coverage']>['issues'] = [...discovery.issues];
   for (const file of files) {
+    const relative = path.relative(target, file).replace(/\\/g, '/');
     try {
-      if (fs.statSync(file).size > 2_000_000) continue;
+      const sizeBytes = fs.statSync(file).size;
+      if (sizeBytes > maxFileBytes) {
+        coverageIssues.push({ file: relative, reason: 'file-too-large', sizeBytes, limitBytes: maxFileBytes });
+        continue;
+      }
       contents.set(file, fs.readFileSync(file, 'utf8'));
-    } catch {}
+    } catch {
+      coverageIssues.push({ file: relative, reason: 'read-error' });
+    }
   }
+  const databaseContext = detectDatabaseContext(target, files, contents);
   const semanticSources = new Map<string, string>();
   for (const [file, content] of contents) {
     const relative = path.relative(target, file).replace(/\\/g, '/');
     if (/\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file) && !isTestOrFixtureFile(relative)) semanticSources.set(relative, content);
   }
-  const semanticIndex = buildProjectSemanticIndex(target, semanticSources);
+  const semanticIndex = buildProjectSemanticIndex(target, semanticSources, maxFileBytes);
+  let structuralFiles = 0;
+  let fallbackFiles = 0;
 
   for (const file of files) {
     const content = contents.get(file);
@@ -1030,14 +1057,24 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
     const inspectCode = /\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file) && !isTestOrFixtureFile(relative);
     findings.push(...scanInfrastructure(content, relative));
     let structurallyParsed = false;
+    let structuralParseError: { line?: number; parser: 'babel' | 'lezer-python' } | undefined;
     if (inspectCode && /\.(?:cjs|js|jsx|mjs|ts|tsx)$/i.test(file)) {
       const structural = scanJavaScriptStructure(content, relative, semanticIndex.externalQueryFunctions.get(relative));
       structurallyParsed = structural.parsed;
+      structuralParseError = structural.parseError;
       findings.push(...structural.findings.map(finding));
     } else if (inspectCode && /\.py$/i.test(file)) {
       const structural = scanPythonStructure(content, relative, semanticIndex.externalQueryFunctions.get(relative));
       structurallyParsed = structural.parsed;
+      structuralParseError = structural.parseError;
       findings.push(...structural.findings.map(finding));
+    }
+    if (inspectCode) {
+      if (structurallyParsed) structuralFiles += 1;
+      else {
+        fallbackFiles += 1;
+        coverageIssues.push({ file: relative, reason: 'parse-fallback', ...structuralParseError });
+      }
     }
     findings.push(...scanCodeAndSecrets(content, relative, inspectCode, !structurallyParsed));
     if (databaseContext.detected && /\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file)) findings.push(...scanRawQueries(content, relative));
@@ -1063,6 +1100,7 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
   unique.sort((left, right) => severityRank[left.severity] - severityRank[right.severity]
     || (left.file || '').localeCompare(right.file || '') || (left.line || 0) - (right.line || 0));
 
+  const filesSkipped = coverageIssues.filter(issue => issue.reason === 'file-too-large' || issue.reason === 'read-error').length;
   return {
     schemaVersion: '1.0',
     tool: { name: 'vellox', version },
@@ -1070,7 +1108,7 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
     target,
     databaseContext,
     summary: {
-      filesScanned: files.length,
+      filesScanned: contents.size,
       findings: unique.length,
       critical: unique.filter(item => item.severity === 'CRITICAL').length,
       high: unique.filter(item => item.severity === 'HIGH').length,
@@ -1079,6 +1117,17 @@ export function scanProject(targetDirectory: string, version: string): VelloxRep
       secrets: unique.filter(item => item.category === 'security').length,
       infrastructure: unique.filter(item => item.category === 'infrastructure').length,
       reviewableSqlFixes: unique.filter(item => item.sql).length
+    },
+    coverage: {
+      complete: coverageIssues.length === 0,
+      filesDiscovered: files.length,
+      filesAnalyzed: contents.size,
+      filesSkipped,
+      structuralFiles,
+      fallbackFiles,
+      semanticModules: semanticIndex.modulesAnalyzed,
+      semanticFunctions: semanticIndex.functionsAnalyzed,
+      issues: coverageIssues
     },
     findings: unique
   };

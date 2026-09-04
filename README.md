@@ -11,7 +11,7 @@ Find supported risks, inspect the evidence, and review the action.
 
 [![npm](https://img.shields.io/npm/v/vellox?style=flat-square&label=npx%20vellox&labelColor=070908&color=c8ff53)](https://www.npmjs.com/package/vellox)
 [![CI](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml/badge.svg)](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml)
-[![tests](https://img.shields.io/badge/tests-162%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
+[![tests](https://img.shields.io/badge/tests-170%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-070908?style=flat-square&labelColor=070908&color=c8ff53)](./package.json)
 [![license](https://img.shields.io/badge/license-proprietary-070908?style=flat-square&labelColor=070908&color=c8ff53)](./LICENSE)
 
@@ -40,7 +40,7 @@ No global install. Run it from the root of the project you want to inspect:
 npx vellox
 ```
 
-Vellox scans the current directory and reports direct or cross-file N+1 database work, sequential loops, repeated linear searches and sorts, quadratic collection growth, unbounded ORM reads, database-specific async fan-out, event-loop blocking, risky SQL, exposed credentials, and missing database indexes. Every command consumes the same evidence artifact:
+Vellox scans the current directory and reports direct or cross-file N+1 database work, sequential loops, repeated linear searches and sorts, quadratic collection growth, unbounded ORM reads, database-specific async fan-out, event-loop blocking, risky SQL, exposed credentials, and missing database indexes. It also records exactly what was analyzed, skipped, or parsed through the conservative fallback. Every command consumes the same evidence artifact:
 
 ```text
 .vellox/report.json
@@ -82,8 +82,8 @@ npx vellox explain plan.json
 
 | Surface | Signals |
 | --- | --- |
-| **JavaScript & TypeScript** | Project-wide call graph across ESM, CommonJS, barrel exports, aliases, namespaces, imported classes, and `tsconfig` paths; direct/transitive N+1 loops, O(n²) growth, query-aware fan-out, and async hazards |
-| **Python** | Project-wide call graph across relative/absolute imports, aliases, namespaces, and imported classes; direct/transitive query loops, quadratic growth, query-aware `asyncio.gather`, and blocking async work |
+| **JavaScript & TypeScript** | Project-wide call graph across ESM, CommonJS, barrels, aliases, workspace packages, nearest/inherited `tsconfig` paths, classes, and constructor injection; direct/transitive N+1 loops, O(n²) growth, query-aware fan-out, and async hazards |
+| **Python** | Project-wide call graph across relative/absolute imports, aliases, namespaces, imported classes, and typed constructor injection; direct/transitive query loops, quadratic growth, query-aware `asyncio.gather`, and blocking async work |
 | **SQL & ORM** | Unbounded Prisma/Mongoose/Sequelize/SQLAlchemy/Django reads, plain and embedded SQL, unique-lookup-aware bounds, full-table writes, large join graphs, avoidable deduplication, dynamic SQL, missing FK indexes |
 | **Infrastructure config** | Floating container images, effective final-stage users, complete Kubernetes CPU/memory policies and privileged workloads, Terraform public database/storage/ingress exposure |
 | **Execution plans** | Actionable PostgreSQL JSON diagnostics for expensive sequential scans, disk spills, cardinality misestimation, nested-loop amplification, and low buffer hit ratios |
@@ -100,7 +100,8 @@ npx vellox explain plan.json
 - **Intentional escape hatch.** Use `// @vellox-ignore` for reviewed loops or batch routines.
 - **Confidence is explicit.** Structural certainty and heuristic risk are separate; ambiguous complexity and ORM-volume findings are labeled with medium confidence.
 - **Cross-file evidence is traceable.** Findings reached through an import include the resolved call path to the database in terminal, Markdown, JSON, and SARIF.
-- **Bounds require evidence.** Derived collections are treated as bounded only when a single assignment proves a static cap of at most 100; a copied collection or `slice(0, 1000)` remains visible.
+- **Coverage is explicit.** Reports list discovered, analyzed, skipped, structural, and fallback files. `vellox check` fails closed on incomplete analysis unless `--allow-incomplete` is chosen deliberately.
+- **Bounds require evidence.** Syntax, single-assignment dataflow, and dominating guards can prove an iteration ceiling. Caps up to 100 reduce severity; larger proven caps remain visible with their real upper bound.
 
 ## CLI reference
 
@@ -108,6 +109,7 @@ npx vellox explain plan.json
 | --- | --- |
 | `npx vellox` | Scans the current project and creates reviewable recommendations |
 | `npx vellox <path>` | Scans a specific project directory |
+| `npx vellox scan . --max-file-bytes N` | Overrides the per-file analysis ceiling and reports every skipped file |
 | `npx vellox scan "<sql>"` | Checks a single SQL statement for structural anti-patterns |
 | `npx vellox optimize <file.sql\|"SQL">` | Analyzes one query or every statement in a SQL file |
 | `npx vellox scan . --format json` | Emits the complete machine-readable evidence report |
@@ -122,7 +124,8 @@ npx vellox explain plan.json
 | `npx vellox init` | Creates `vellox.config.json` |
 | `npx vellox hook` | Installs a local pre-commit Vellox gate |
 | `npx vellox ci` | Generates a GitHub Actions workflow |
-| `npx vellox check` | Applies real critical/high/secret budgets to the current scan |
+| `npx vellox check` | Applies critical/high/secret and complete-analysis budgets to the current scan |
+| `npx vellox check --allow-incomplete` | Explicitly permits reported skips/fallbacks for that gate run |
 | `npx vellox baseline` | Saves accepted fingerprints so CI can fail only on new findings |
 | `npx vellox report` | Writes a Markdown report from `.vellox/report.json` |
 | `npx vellox demo` | Runs the real scanner against a temporary sample project |
@@ -143,11 +146,15 @@ npx vellox explain plan.json
     "query/unbounded-orm-read": "HIGH",
     "infra/*": { "enabled": false }
   },
+  "analysis": {
+    "maxFileBytes": 2000000
+  },
   "budgets": {
     "maxCritical": 0,
     "maxHigh": 0,
     "maxTotal": null,
-    "failOnSecrets": true
+    "failOnSecrets": true,
+    "failOnIncompleteAnalysis": true
   }
 }
 ```
@@ -158,7 +165,7 @@ npx vellox explain plan.json
 
 | Layer | Supported integrations |
 | --- | --- |
-| **Core source analysis** | Parser-backed TypeScript, JavaScript, JSX, TSX, and Python; import-aware project call graph; conservative fallback for incomplete source |
+| **Core source analysis** | Parser-backed TypeScript, JavaScript, JSX, TSX, and Python; monorepo-aware project call graph; constructor injection; conservative fallback with explicit coverage |
 | **Queries** | Plain `.sql` files, embedded SQL strings/templates, and direct CLI input |
 | **Schemas** | Prisma, Drizzle, and SQL DDL |
 | **Infrastructure** | Docker/Containerfile, Docker Compose, Kubernetes manifests, and Terraform |
@@ -167,7 +174,7 @@ npx vellox explain plan.json
 
 ## Proof, not promises
 
-The repository currently passes **162 automated tests** (159 TypeScript + 3 Python), including a positive/negative precision corpus, cross-file ESM/CommonJS/Python call graphs, aliases, barrels, classes, import cycles, static-bound dataflow, query-specific fan-out, execution-plan diagnostics, CLI safety contracts, stable baselines, schemas, and manifests.
+The repository currently passes **170 automated tests** (167 TypeScript + 3 Python), including a positive/negative precision corpus, cross-file ESM/CommonJS/Python call graphs, nested monorepo configs, workspace packages, constructor injection, aliases, barrels, classes, import cycles, static-bound and guard dataflow, coverage failures, query-specific fan-out, execution-plan diagnostics, CLI safety contracts, stable baselines, schemas, and manifests.
 
 Reproduce the checks on your machine:
 

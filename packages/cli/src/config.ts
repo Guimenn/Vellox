@@ -7,16 +7,24 @@ export const DEFAULT_CONFIG: VelloxConfig = {
   baselinePath: '.vellox/baseline.json',
   ignore: [],
   rules: {},
+  analysis: {
+    maxFileBytes: 2_000_000
+  },
   budgets: {
     maxCritical: 0,
     maxHigh: 0,
     maxTotal: null,
-    failOnSecrets: true
+    failOnSecrets: true,
+    failOnIncompleteAnalysis: true
   }
 };
 
 function finiteNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function positiveInteger(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
 
 function stringArray(value: unknown): string[] {
@@ -50,16 +58,23 @@ export function loadConfig(target: string): VelloxConfig {
   try {
     const input = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Partial<VelloxConfig>;
     const budgets = input.budgets || {} as Partial<VelloxBudgets>;
+    const analysis = input.analysis || {} as VelloxConfig['analysis'];
     return {
       reportPath: typeof input.reportPath === 'string' ? input.reportPath : DEFAULT_CONFIG.reportPath,
       baselinePath: typeof input.baselinePath === 'string' ? input.baselinePath : DEFAULT_CONFIG.baselinePath,
       ignore: stringArray(input.ignore),
       rules: ruleConfig(input.rules),
+      analysis: {
+        maxFileBytes: positiveInteger(analysis.maxFileBytes, DEFAULT_CONFIG.analysis.maxFileBytes)
+      },
       budgets: {
         maxCritical: finiteNumber(budgets.maxCritical, DEFAULT_CONFIG.budgets.maxCritical),
         maxHigh: finiteNumber(budgets.maxHigh, DEFAULT_CONFIG.budgets.maxHigh),
         maxTotal: budgets.maxTotal === null ? null : finiteNumber(budgets.maxTotal, Number.MAX_SAFE_INTEGER),
-        failOnSecrets: typeof budgets.failOnSecrets === 'boolean' ? budgets.failOnSecrets : true
+        failOnSecrets: typeof budgets.failOnSecrets === 'boolean' ? budgets.failOnSecrets : true,
+        failOnIncompleteAnalysis: typeof budgets.failOnIncompleteAnalysis === 'boolean'
+          ? budgets.failOnIncompleteAnalysis
+          : DEFAULT_CONFIG.budgets.failOnIncompleteAnalysis
       }
     };
   } catch (error) {

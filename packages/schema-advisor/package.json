@@ -1,6 +1,6 @@
 {
   "name": "@vellox/schema-advisor",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Pre-deployment database schema & DDL migration waste analyzer for Vellox",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
