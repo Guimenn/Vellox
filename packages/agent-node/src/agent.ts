@@ -5,7 +5,7 @@ import { AgentConfig, ResolvedAgentConfig, resolveConfig } from './config.js';
 import { LocalAggregator } from './aggregator.js';
 import { AdaptiveSampler } from './sampler.js';
 
-const AGENT_VERSION = '0.8.0';
+const AGENT_VERSION = '0.9.0';
 
 export class VelloxAgent {
   private static instance: VelloxAgent | null = null;

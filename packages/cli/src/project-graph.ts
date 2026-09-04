@@ -458,6 +458,21 @@ function parseJavaScriptModule(file: string, content: string, resolveModule: (fi
   }
 
   const visitInstances = (node: any): void => {
+    const registerCallableAlias = (local: string, source: string): void => {
+      const localSymbol = localSymbols.get(source);
+      if (localSymbol && !localSymbols.has(local)) localSymbols.set(local, localSymbol);
+      const binding = imports.find(item => !item.namespace && item.local === source);
+      if (binding && !imports.some(item => item.local === local && item.targetFile === binding.targetFile && item.targetExport === binding.targetExport)) {
+        imports.push({ local, targetFile: binding.targetFile, targetExport: binding.targetExport });
+      }
+    };
+    if (node?.type === 'VariableDeclarator' && node.id?.type === 'Identifier') {
+      if (node.init?.type === 'Identifier') registerCallableAlias(node.id.name, node.init.name);
+      if (node.init?.type === 'CallExpression' && /^(?:cache|memoize|retry|trace|wrap|with[A-Z]\w*)$/.test(jsName(node.init.callee, content))) {
+        const source = jsName(node.init.arguments?.[0], content);
+        if (source) registerCallableAlias(node.id.name, source);
+      }
+    }
     if (node?.type === 'VariableDeclarator' && node.id?.type === 'Identifier' && node.init?.type === 'NewExpression') {
       const className = jsName(node.init.callee, content);
       const binding = imports.find(item => !item.namespace && item.local === className);
@@ -486,6 +501,7 @@ function parseJavaScriptModule(file: string, content: string, resolveModule: (fi
     if (node?.type === 'AssignmentExpression') {
       const left = jsName(node.left, content);
       const right = jsName(node.right, content);
+      if (/^[A-Za-z_$][\w$]*$/.test(left) && /^[A-Za-z_$][\w$]*$/.test(right)) registerCallableAlias(left, right);
       const cjs = /^(?:module\.exports\.|exports\.)([A-Za-z_$][\w$]*)$/.exec(left);
       const symbol = cjs && (localSymbols.get(right) || localSymbols.get(cjs[1]!));
       if (cjs && symbol) exports.set(cjs[1]!, symbol);
@@ -600,8 +616,23 @@ function parsePythonImports(file: string, content: string, resolveModule: (file:
   const imports: ImportBinding[] = [];
   const reexports: ReexportBinding[] = [];
   const moduleIsInit = path.posix.basename(file) === '__init__.py';
+  const statements: string[] = [];
+  let pending = '';
+  let parentheses = 0;
   for (const rawLine of content.split('\n')) {
     const line = rawLine.replace(/#.*$/, '').trim();
+    if (!pending && !/^(?:from|import)\s+/.test(line)) continue;
+    pending += `${pending ? ' ' : ''}${line.replace(/\\$/, '')}`;
+    parentheses += (line.match(/\(/g) || []).length - (line.match(/\)/g) || []).length;
+    if (parentheses <= 0 && !line.endsWith('\\')) {
+      statements.push(pending);
+      pending = '';
+      parentheses = 0;
+    }
+  }
+  if (pending) statements.push(pending);
+  for (const statement of statements) {
+    const line = statement.trim();
     const from = /^from\s+([\w.]+)\s+import\s+(.+)$/.exec(line);
     if (from) {
       const targetFile = resolveModule(file, from[1]!);
@@ -617,11 +648,15 @@ function parsePythonImports(file: string, content: string, resolveModule: (file:
       }
       continue;
     }
-    const direct = /^import\s+([\w.]+)(?:\s+as\s+([A-Za-z_]\w*))?$/.exec(line);
+    const direct = /^import\s+(.+)$/.exec(line);
     if (!direct) continue;
-    const targetFile = resolveModule(file, direct[1]!);
-    if (!targetFile) continue;
-    imports.push({ local: direct[2] || direct[1]!.split('.')[0]!, targetFile, targetExport: '*', namespace: true });
+    for (const item of direct[1]!.split(',')) {
+      const match = /^([\w.]+)(?:\s+as\s+([A-Za-z_]\w*))?$/.exec(item.trim());
+      if (!match) continue;
+      const targetFile = resolveModule(file, match[1]!);
+      if (!targetFile) continue;
+      imports.push({ local: match[2] || match[1]!.split('.')[0]!, targetFile, targetExport: '*', namespace: true });
+    }
   }
   return { imports, reexports };
 }
@@ -638,6 +673,10 @@ function parsePythonModule(file: string, content: string, resolveModule: (file: 
   const localSymbols = new Map<string, string>();
   const exports = new Map<string, string>();
   const parsedImports = parsePythonImports(file, content, resolveModule);
+  for (const alias of content.matchAll(/^\s*([A-Za-z_]\w*)\s*=\s*(?:(?:cache|lru_cache|partial|retry|trace|wrap|with_\w+)\s*\(\s*)?([A-Za-z_]\w*)\s*\)?\s*$/gm)) {
+    const binding = parsedImports.imports.find(item => !item.namespace && item.local === alias[2]);
+    if (binding) parsedImports.imports.push({ local: alias[1]!, targetFile: binding.targetFile, targetExport: binding.targetExport });
+  }
   for (const assignment of content.matchAll(/^\s*((?:self\.)?[A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*\(/gm)) {
     const constructor = parsedImports.imports.find(binding => !binding.namespace && binding.local === assignment[2]);
     if (constructor) parsedImports.imports.push({
@@ -691,6 +730,10 @@ function parsePythonModule(file: string, content: string, resolveModule: (file: 
     for (const child of pythonChildren(node)) collect(child, next);
   };
   collect(root);
+  for (const alias of content.matchAll(/^\s*([A-Za-z_]\w*)\s*=\s*(?:(?:cache|lru_cache|partial|retry|trace|wrap|with_\w+)\s*\(\s*)?([A-Za-z_]\w*)\s*\)?\s*$/gm)) {
+    const symbol = localSymbols.get(alias[2]!);
+    if (symbol && !localSymbols.has(alias[1]!)) localSymbols.set(alias[1]!, symbol);
+  }
   return {
     file, language: 'python', functions, localSymbols, exports,
     imports: parsedImports.imports, reexports: parsedImports.reexports, exportAll: []

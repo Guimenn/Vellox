@@ -81,6 +81,25 @@ describe('project-wide semantic call graph', () => {
     expect(rules).not.toContain('code/unbounded-async-fanout');
   });
 
+  it('traces imported callback references used directly by collection methods', () => {
+    const result = findings({
+      'src/repository.ts': 'export async function fetchUser(id) { return prisma.user.findUnique({ where: { id } }); }',
+      'src/service.ts': "import { fetchUser } from './repository';\nexport async function fanout(ids) { return Promise.all(ids.map(fetchUser)); }\nexport function hydrate(ids) { ids.forEach(fetchUser); }"
+    }, 'src/service.ts');
+
+    expect(result.some(item => item.ruleId === 'code/unbounded-query-fanout')).toBe(true);
+    expect(result.some(item => item.ruleId === 'code/query-in-loop' && item.metadata?.pattern === 'cross-file-callback-database')).toBe(true);
+  });
+
+  it('traces imported functions through common wrapper and assignment aliases', () => {
+    const result = findings({
+      'src/repository.ts': 'export async function fetchUser(id) { return prisma.user.findUnique({ where: { id } }); }',
+      'src/service.ts': "import { fetchUser } from './repository';\nconst retried = withRetry(fetchUser);\nconst loadOne = retried;\nexport async function hydrate(ids) { for (const id of ids) await loadOne(id); }"
+    }, 'src/service.ts');
+
+    expect(result.some(item => item.ruleId === 'code/query-in-loop')).toBe(true);
+  });
+
   it('resolves TypeScript path aliases from tsconfig', () => {
     const root = project({
       'tsconfig.json': JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@data/*': ['src/data/*'] } } }),
@@ -135,6 +154,24 @@ describe('project-wide semantic call graph', () => {
     expect(finding?.confidence).toBe('MEDIUM');
     expect(finding?.metadata?.pattern).toBe('cross-file-database');
     expect(finding?.metadata?.callPath).toContain('app/repository.py:fetch_user -> database');
+  });
+
+  it('resolves parenthesized multiline Python imports', () => {
+    const result = findings({
+      'app/repository.py': 'def fetch_user(user_id):\n    return session.execute(select(User).where(User.id == user_id))\n',
+      'app/service.py': 'from .repository import (\n    fetch_user as load_one,\n)\n\ndef hydrate(ids):\n    for user_id in ids:\n        load_one(user_id)\n'
+    }, 'app/service.py');
+
+    expect(result.some(item => item.ruleId === 'code/synchronous-query-loop')).toBe(true);
+  });
+
+  it('traces imported Python functions through wrapper aliases', () => {
+    const result = findings({
+      'app/repository.py': 'def fetch_user(user_id):\n    return session.execute(select(User).where(User.id == user_id))\n',
+      'app/service.py': 'from .repository import fetch_user\nload_one = retry(fetch_user)\n\ndef hydrate(ids):\n    for user_id in ids:\n        load_one(user_id)\n'
+    }, 'app/service.py');
+
+    expect(result.some(item => item.ruleId === 'code/synchronous-query-loop')).toBe(true);
   });
 
   it('upgrades cross-file Python gather to database-specific evidence', () => {

@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 
 import * as fs from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { DEFAULT_CONFIG, loadConfig, readReport, resolveFromTarget, writeJson } from './config.js';
 import { analyzePostgresExplain } from './explain.js';
 import { buildMigration, evaluateBudgets, formatMarkdown, formatPretty, formatTop, toSarif } from './formatters.js';
-import { analyzeSqlDocument, analyzeSqlQuery, scanProject } from './scanner.js';
+import { analyzeSqlDocumentDetailed, analyzeSqlQuery, scanProject } from './scanner.js';
 import { filterRules, formatRuleCatalog } from './rules.js';
-import { VelloxBudgets, VelloxReport } from './types.js';
+import { VelloxBudgets, VelloxConfig, VelloxReport } from './types.js';
 
 const args = process.argv.slice(2);
 
@@ -54,7 +56,7 @@ function positionals(afterCommand = true): string[] {
   for (let index = afterCommand ? 1 : 0; index < args.length; index += 1) {
     const value = args[index]!;
     if (value.startsWith('--')) {
-      if (!value.includes('=') && !['--no-write', '--allow-secrets', '--allow-incomplete'].includes(value)) index += 1;
+      if (!value.includes('=') && !['--no-write', '--no-cache', '--changed', '--allow-secrets', '--allow-incomplete'].includes(value)) index += 1;
       continue;
     }
     if (/^-[a-z]$/i.test(value)) continue;
@@ -84,11 +86,118 @@ function writeOutput(value: string, defaultPath?: string): void {
   console.log('Saved: ' + outputPath);
 }
 
+function gitOutput(target: string, values: string[]): string {
+  return execFileSync('git', ['-C', target, ...values], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
+
+function cacheKey(target: string, input: unknown): string | undefined {
+  if (hasFlag('--no-cache')) return undefined;
+  try {
+    const status = gitOutput(target, ['status', '--porcelain=v1', '--untracked-files=all'])
+      .split('\n').filter(Boolean)
+      .filter(line => {
+        const file = line.slice(3).replace(/^"|"$/g, '').replace(/\\/g, '/');
+        return file !== '.vellox' && !file.startsWith('.vellox/') && !file.includes('/.vellox/');
+      });
+    if (status.length) return undefined;
+    const head = gitOutput(target, ['rev-parse', 'HEAD']).trim();
+    const localInputs = ['.gitignore', '.velloxignore', 'vellox.config.json'].map(file => {
+      const filePath = path.join(target, file);
+      return [file, fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : null];
+    });
+    return createHash('sha256').update(JSON.stringify({ head, target: path.resolve(target), version: VERSION, input, localInputs })).digest('hex');
+  } catch {
+    return undefined;
+  }
+}
+
+function changedBaseOption(): string | undefined {
+  const inline = args.find(value => value.startsWith('--changed='));
+  if (inline) return inline.slice('--changed='.length) || 'HEAD';
+  return hasFlag('--changed') ? 'HEAD' : undefined;
+}
+
+function changedFiles(target: string, base: string): Set<string> {
+  try {
+    const root = gitOutput(target, ['rev-parse', '--show-toplevel']).trim();
+    const targetPrefix = path.relative(root, target).replace(/\\/g, '/');
+    const commands = [
+      ['diff', '--name-only', '--diff-filter=ACMRTUXB', `${base}...HEAD`],
+      ['diff', '--name-only', '--diff-filter=ACMRTUXB'],
+      ['diff', '--cached', '--name-only', '--diff-filter=ACMRTUXB'],
+      ['ls-files', '--others', '--exclude-standard']
+    ];
+    const selected = new Set<string>();
+    for (const command of commands) {
+      for (const file of gitOutput(root, command).split('\n').filter(Boolean)) {
+        const normalized = file.replace(/\\/g, '/');
+        if (targetPrefix && normalized !== targetPrefix && !normalized.startsWith(`${targetPrefix}/`)) continue;
+        const relative = targetPrefix ? normalized.slice(targetPrefix.length + 1) : normalized;
+        if (relative === '.vellox' || relative.startsWith('.vellox/')) continue;
+        selected.add(relative);
+      }
+    }
+    return selected;
+  } catch (error) {
+    throw new Error(`--changed requires a Git repository and a valid base ref "${base}": ${(error as Error).message}`);
+  }
+}
+
+function changedScope(report: VelloxReport, selected: Set<string>, base: string): VelloxReport {
+  const source = /(?:\.(?:cjs|env|js|json|jsx|mjs|prisma|py|sql|tf|tfvars|toml|ts|tsx|yaml|yml)$|^(?:Dockerfile|Containerfile)(?:\..+)?$|^\.env(?:\..+)?$|^Pipfile$|^requirements(?:\.[\w-]+)?\.txt$)/i;
+  const analyzed = [...selected].filter(file => source.test(path.basename(file)));
+  const findings = report.findings.filter(finding => finding.file && selected.has(finding.file));
+  const issues = (report.coverage?.issues || []).filter(issue => selected.has(issue.file));
+  const summary: VelloxReport['summary'] = {
+    filesScanned: analyzed.length,
+    findings: findings.length,
+    critical: findings.filter(item => item.severity === 'CRITICAL').length,
+    high: findings.filter(item => item.severity === 'HIGH').length,
+    medium: findings.filter(item => item.severity === 'MEDIUM').length,
+    low: findings.filter(item => item.severity === 'LOW').length,
+    secrets: findings.filter(item => item.ruleId.startsWith('secret/')).length,
+    infrastructure: findings.filter(item => item.category === 'infrastructure').length,
+    reviewableSqlFixes: findings.filter(item => item.sql).length
+  };
+  return {
+    ...report, summary, findings,
+    coverage: report.coverage ? {
+      ...report.coverage,
+      scope: 'changed', changedBase: base,
+      complete: issues.length === 0,
+      filesDiscovered: analyzed.length,
+      filesAnalyzed: Math.max(0, analyzed.length - issues.filter(issue => issue.reason === 'file-too-large' || issue.reason === 'read-error').length),
+      filesSkipped: issues.filter(issue => issue.reason === 'file-too-large' || issue.reason === 'read-error').length,
+      fallbackFiles: issues.filter(issue => issue.reason === 'parse-fallback').length,
+      issues
+    } : undefined
+  };
+}
+
 function scanAndPersist(target: string): VelloxReport {
   const config = loadConfig(target);
-  const report = scanProject(target, VERSION, {
-    maxFileBytes: positiveIntegerOption('--max-file-bytes', config.analysis.maxFileBytes)
-  });
+  const scanOptions: Parameters<typeof scanProject>[2] = {
+    maxFileBytes: positiveIntegerOption('--max-file-bytes', config.analysis.maxFileBytes),
+    sqlDialect: sqlDialectOption(config.analysis.sqlDialect || 'auto'),
+    largeInListThreshold: positiveIntegerOption('--large-in-threshold', config.analysis.largeInListThreshold || 100),
+    excessiveOrThreshold: positiveIntegerOption('--or-threshold', config.analysis.excessiveOrThreshold || 5)
+  };
+  const key = cacheKey(target, { scanOptions, config });
+  const cachePath = path.join(target, '.vellox', 'cache-v1.json');
+  let fullReport: VelloxReport | undefined;
+  if (key && fs.existsSync(cachePath)) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8')) as { key?: string; report?: VelloxReport };
+      if (cached.key === key && cached.report?.tool.version === VERSION) fullReport = cached.report;
+    } catch {}
+  }
+  if (!fullReport) {
+    fullReport = scanProject(target, VERSION, scanOptions);
+    if (fullReport.coverage) fullReport.coverage = { ...fullReport.coverage, scope: 'full', cacheHit: false };
+    if (key && !hasFlag('--no-write')) writeJson(cachePath, { key, report: fullReport });
+  } else if (fullReport.coverage) fullReport = { ...fullReport, coverage: { ...fullReport.coverage, cacheHit: true } };
+  const base = changedBaseOption();
+  const report = base ? changedScope(fullReport, changedFiles(target, base), base) : fullReport;
   if (!hasFlag('--no-write')) writeJson(reportPathFor(target), report);
   return report;
 }
@@ -113,7 +222,13 @@ function projectScan(target: string): void {
 }
 
 function inlineReport(sql: string, file?: string): VelloxReport {
-  const findings = file ? analyzeSqlDocument(sql, file) : analyzeSqlQuery(sql);
+  const dialect = sqlDialectOption('auto');
+  const analysis = analyzeSqlDocumentDetailed(sql, file || 'inline SQL', { dialect });
+  const findings = analysis.findings;
+  const coverageIssues = analysis.issues.map(issue => ({
+    file: file || 'inline SQL', reason: 'parse-fallback' as const, line: issue.line,
+    parser: 'vellox-sql-ast' as const, message: issue.message
+  }));
   return {
     schemaVersion: '1.0',
     tool: { name: 'vellox', version: VERSION },
@@ -121,7 +236,7 @@ function inlineReport(sql: string, file?: string): VelloxReport {
     target: file || 'inline SQL',
     databaseContext: { detected: true, evidence: [file ? `SQL file: ${file}` : 'Inline SQL input'] },
     summary: {
-      filesScanned: 0,
+      filesScanned: file ? 1 : 0,
       findings: findings.length,
       critical: findings.filter(item => item.severity === 'CRITICAL').length,
       high: findings.filter(item => item.severity === 'HIGH').length,
@@ -130,6 +245,20 @@ function inlineReport(sql: string, file?: string): VelloxReport {
       secrets: 0,
       infrastructure: 0,
       reviewableSqlFixes: 0
+    },
+    coverage: {
+      complete: coverageIssues.length === 0,
+      scope: 'full', cacheHit: false,
+      filesDiscovered: file ? 1 : 0,
+      filesAnalyzed: file ? 1 : 0,
+      filesSkipped: 0,
+      structuralFiles: 0,
+      fallbackFiles: coverageIssues.length ? 1 : 0,
+      semanticModules: 0,
+      semanticFunctions: 0,
+      sqlStatements: analysis.statements,
+      sqlAstStatements: coverageIssues.length ? 0 : analysis.statements,
+      issues: coverageIssues
     },
     findings
   };
@@ -187,6 +316,12 @@ function positiveIntegerOption(name: string, fallback: number): number {
   const parsed = numberOption(name, fallback);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(name + ' must be a positive integer.');
   return parsed;
+}
+
+function sqlDialectOption(fallback: NonNullable<VelloxConfig['analysis']['sqlDialect']>): NonNullable<VelloxConfig['analysis']['sqlDialect']> {
+  const value = option('--dialect') || fallback;
+  if (!['auto', 'postgresql', 'mysql', 'sqlite'].includes(value)) throw new Error('--dialect must be auto, postgresql, mysql, or sqlite.');
+  return value as NonNullable<VelloxConfig['analysis']['sqlDialect']>;
 }
 
 function check(target: string): void {
@@ -452,8 +587,8 @@ function help(): void {
     '',
     'Usage:',
     '  vellox [path] [--format pretty|json|sarif] [--output file] [--max-file-bytes N]',
-    '  vellox scan [path|"SQL"] [--format pretty|json|sarif]',
-    '  vellox optimize [path|query.sql|"SQL"] [--format pretty|json|sarif]',
+    '  vellox scan [path|"SQL"] [--format pretty|json|sarif] [--dialect auto|postgresql|mysql|sqlite] [--changed[=ref]]',
+    '  vellox optimize [path|query.sql|"SQL"] [--format pretty|json|sarif] [--dialect ...]',
     '  vellox check [path] [--baseline file] [--max-critical N] [--max-high N] [--allow-incomplete]',
     '  vellox baseline [path] [--output file]',
     '  vellox fix [path] [--report file] [--output migration.sql]',
@@ -465,6 +600,7 @@ function help(): void {
     '  vellox ai "<sql>" | demo | discover | init | hook | ci | doctor',
     '',
     'Every project scan writes .vellox/report.json unless --no-write is set.',
+    'Clean Git worktrees reuse a content-safe commit cache; use --no-cache to force analysis.',
     'No command executes SQL or mutates a database.'
   ].join('\n'));
 }

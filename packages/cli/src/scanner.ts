@@ -4,11 +4,15 @@ import * as path from 'node:path';
 import createIgnore from 'ignore';
 import { loadConfig } from './config.js';
 import { buildProjectSemanticIndex } from './project-graph.js';
+import { analyzeSqlDocumentSyntax, analyzeSqlSyntax, SqlAnalysisOptions } from './sql-analysis.js';
 import { scanJavaScriptStructure, scanPythonStructure } from './structural-code.js';
 import { Severity, VelloxConfig, VelloxFinding, VelloxFindingInput, VelloxReport } from './types.js';
 
 export interface ScanOptions {
   maxFileBytes?: number;
+  sqlDialect?: NonNullable<VelloxConfig['analysis']['sqlDialect']>;
+  largeInListThreshold?: number;
+  excessiveOrThreshold?: number;
 }
 
 const IGNORED_DIRECTORIES = new Set([
@@ -851,7 +855,7 @@ function sqlStructure(sql: string): {
   };
 }
 
-export function analyzeSqlQuery(sql: string, file?: string, line?: number): VelloxFinding[] {
+function analyzeSqlQueryLegacy(sql: string, file?: string, line?: number): VelloxFinding[] {
   const structure = sqlStructure(sql);
   const rules: Array<{ id: string; severity: Severity; title: string; test: () => boolean; recommendation: string }> = [
     { id: 'query/select-star', severity: 'MEDIUM', title: 'Wildcard SELECT retrieval', test: () => structure.selectStar, recommendation: 'Select only required columns to reduce transfer and enable index-only scans.' },
@@ -885,6 +889,11 @@ export function analyzeSqlQuery(sql: string, file?: string, line?: number): Vell
     }));
   }
   return results;
+}
+
+export function analyzeSqlQuery(sql: string, file?: string, line?: number, options: Omit<SqlAnalysisOptions, 'file' | 'line'> = {}): VelloxFinding[] {
+  const analysis = analyzeSqlSyntax(sql, { ...options, file, line });
+  return analysis.parsed ? analysis.findings.map(finding) : analyzeSqlQueryLegacy(sql, file, line);
 }
 
 function scanRawQueries(content: string, relativeFile: string): VelloxFinding[] {
@@ -1002,8 +1011,29 @@ function scanSqlFileQueries(content: string, relativeFile: string): VelloxFindin
   return results;
 }
 
-export function analyzeSqlDocument(content: string, file = 'inline.sql'): VelloxFinding[] {
-  return scanSqlFileQueries(content, file);
+export interface SqlDocumentScanResult {
+  findings: VelloxFinding[];
+  issues: Array<{ line: number; message: string }>;
+  statements: number;
+  dialects: string[];
+}
+
+export function analyzeSqlDocumentDetailed(content: string, file = 'inline.sql', options: Omit<SqlAnalysisOptions, 'file'> = {}): SqlDocumentScanResult {
+  const analysis = analyzeSqlDocumentSyntax(content, { ...options, file });
+  const legacy = analysis.issues.length ? scanSqlFileQueries(content, file) : [];
+  if (analysis.issues.length && legacy.length === 0 && /\b(?:SELECT|WITH|UPDATE|DELETE)\b/i.test(content)) {
+    legacy.push(...analyzeSqlQueryLegacy(content, file, analysis.issues[0]?.line || 1));
+  }
+  return {
+    findings: analysis.issues.length ? legacy : analysis.findings.map(finding),
+    issues: analysis.issues.map(issue => ({ line: issue.line, message: issue.message })),
+    statements: analysis.statements,
+    dialects: analysis.dialects
+  };
+}
+
+export function analyzeSqlDocument(content: string, file = 'inline.sql', options: Omit<SqlAnalysisOptions, 'file'> = {}): VelloxFinding[] {
+  return analyzeSqlDocumentDetailed(content, file, options).findings;
 }
 
 export function scanProject(targetDirectory: string, version: string, options: ScanOptions = {}): VelloxReport {
@@ -1043,6 +1073,8 @@ export function scanProject(targetDirectory: string, version: string, options: S
   const semanticIndex = buildProjectSemanticIndex(target, semanticSources, maxFileBytes);
   let structuralFiles = 0;
   let fallbackFiles = 0;
+  let sqlStatements = 0;
+  let sqlAstStatements = 0;
 
   for (const file of files) {
     const content = contents.get(file);
@@ -1052,7 +1084,18 @@ export function scanProject(targetDirectory: string, version: string, options: S
     if (/\.(?:js|jsx|ts|tsx)$/i.test(file) && /(?:pgTable|mysqlTable|sqliteTable)\s*\(/.test(content)) findings.push(...scanDrizzle(content, relative));
     if (file.endsWith('.sql')) {
       findings.push(...scanSqlSchema(content, relative));
-      findings.push(...scanSqlFileQueries(content, relative));
+      const sql = analyzeSqlDocumentDetailed(content, relative, {
+        dialect: options.sqlDialect ?? config.analysis.sqlDialect,
+        largeInThreshold: options.largeInListThreshold ?? config.analysis.largeInListThreshold,
+        excessiveOrThreshold: options.excessiveOrThreshold ?? config.analysis.excessiveOrThreshold
+      });
+      findings.push(...sql.findings);
+      sqlStatements += sql.statements;
+      sqlAstStatements += sql.issues.length ? 0 : sql.statements;
+      for (const issue of sql.issues) {
+        fallbackFiles += 1;
+        coverageIssues.push({ file: relative, reason: 'parse-fallback', line: issue.line, parser: 'vellox-sql-ast', message: issue.message });
+      }
     }
     const inspectCode = /\.(?:cjs|js|jsx|mjs|py|ts|tsx)$/i.test(file) && !isTestOrFixtureFile(relative);
     findings.push(...scanInfrastructure(content, relative));
@@ -1114,7 +1157,7 @@ export function scanProject(targetDirectory: string, version: string, options: S
       high: unique.filter(item => item.severity === 'HIGH').length,
       medium: unique.filter(item => item.severity === 'MEDIUM').length,
       low: unique.filter(item => item.severity === 'LOW').length,
-      secrets: unique.filter(item => item.category === 'security').length,
+      secrets: unique.filter(item => item.ruleId.startsWith('secret/')).length,
       infrastructure: unique.filter(item => item.category === 'infrastructure').length,
       reviewableSqlFixes: unique.filter(item => item.sql).length
     },
@@ -1127,6 +1170,8 @@ export function scanProject(targetDirectory: string, version: string, options: S
       fallbackFiles,
       semanticModules: semanticIndex.modulesAnalyzed,
       semanticFunctions: semanticIndex.functionsAnalyzed,
+      sqlStatements,
+      sqlAstStatements,
       issues: coverageIssues
     },
     findings: unique

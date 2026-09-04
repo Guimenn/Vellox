@@ -1,0 +1,152 @@
+{
+  "version": "precision-v1",
+  "evaluatedRules": [
+    "code/query-in-loop",
+    "code/synchronous-query-loop",
+    "query/cartesian-product",
+    "query/correlated-subquery",
+    "query/function-on-filter",
+    "query/large-in-list",
+    "query/non-sargable-predicate",
+    "query/or-predicate-explosion",
+    "query/unstable-pagination",
+    "security/sql-injection-flow"
+  ],
+  "cases": [
+    {
+      "name": "SQL explicit join predicate",
+      "language": "sql",
+      "source": "SELECT a.id FROM accounts a JOIN regions r ON r.id = a.region_id LIMIT 20",
+      "expected": []
+    },
+    {
+      "name": "SQL missing join predicate",
+      "language": "sql",
+      "source": "SELECT a.id FROM accounts a JOIN regions r LIMIT 20",
+      "expected": ["query/cartesian-product"]
+    },
+    {
+      "name": "SQL correlated EXISTS",
+      "language": "sql",
+      "source": "SELECT u.id FROM users u WHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id) LIMIT 20",
+      "expected": ["query/correlated-subquery"]
+    },
+    {
+      "name": "SQL independent subquery",
+      "language": "sql",
+      "source": "SELECT u.id FROM users u WHERE u.id IN (SELECT user_id FROM active_users) LIMIT 20",
+      "expected": []
+    },
+    {
+      "name": "SQL transformed predicate column",
+      "language": "sql",
+      "source": "SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1",
+      "expected": ["query/function-on-filter"]
+    },
+    {
+      "name": "SQL cast predicate column",
+      "language": "sql",
+      "source": "SELECT id FROM users WHERE user_id::text = $1 LIMIT 1",
+      "expected": ["query/non-sargable-predicate"]
+    },
+    {
+      "name": "SQL sargable time range",
+      "language": "sql",
+      "source": "SELECT id FROM events WHERE created_at >= $1 AND created_at < $2 LIMIT 50",
+      "expected": []
+    },
+    {
+      "name": "SQL large IN list",
+      "language": "sql",
+      "source": "SELECT id FROM users WHERE id IN (1, 2, 3, 4, 5) LIMIT 20",
+      "options": { "largeInThreshold": 5 },
+      "expected": ["query/large-in-list"]
+    },
+    {
+      "name": "SQL small IN list",
+      "language": "sql",
+      "source": "SELECT id FROM users WHERE id IN (1, 2, 3) LIMIT 20",
+      "options": { "largeInThreshold": 5 },
+      "expected": []
+    },
+    {
+      "name": "SQL OR predicate explosion",
+      "language": "sql",
+      "source": "SELECT id FROM users WHERE email = ? OR name = ? OR phone = ? LIMIT 20",
+      "options": { "excessiveOrThreshold": 2 },
+      "expected": ["query/or-predicate-explosion"]
+    },
+    {
+      "name": "SQL deterministic pagination",
+      "language": "sql",
+      "source": "SELECT id FROM users ORDER BY id OFFSET 1200 LIMIT 20",
+      "expected": []
+    },
+    {
+      "name": "SQL unstable pagination",
+      "language": "sql",
+      "source": "SELECT id FROM users OFFSET 1200 LIMIT 20",
+      "expected": ["query/unstable-pagination"]
+    },
+    {
+      "name": "JavaScript tainted SQL",
+      "language": "javascript",
+      "source": "function handler(req) { const id = req.query.id; const sql = 'SELECT * FROM users WHERE id = ' + id; return db.query(sql); }",
+      "expected": ["security/sql-injection-flow"]
+    },
+    {
+      "name": "JavaScript parameterized SQL",
+      "language": "javascript",
+      "source": "function handler(req) { const id = req.query.id; return db.query('SELECT * FROM users WHERE id = $1', [id]); }",
+      "expected": []
+    },
+    {
+      "name": "JavaScript ORM request predicate",
+      "language": "javascript",
+      "source": "function handler(req) { return prisma.user.findUnique({ where: { id: req.params.id } }); }",
+      "expected": []
+    },
+    {
+      "name": "JavaScript Mongo request predicate",
+      "language": "javascript",
+      "source": "function handler(req) { return db.collection.find({ email: req.query.email }); }",
+      "expected": []
+    },
+    {
+      "name": "Python tainted SQL",
+      "language": "python",
+      "source": "def handler(request):\n    user_id = request.args.get('id')\n    sql = f'SELECT * FROM users WHERE id = {user_id}'\n    return cursor.execute(sql)\n",
+      "expected": ["security/sql-injection-flow"]
+    },
+    {
+      "name": "Python parameterized SQL",
+      "language": "python",
+      "source": "def handler(request):\n    user_id = request.args.get('id')\n    return cursor.execute('SELECT * FROM users WHERE id = %s', (user_id,))\n",
+      "expected": []
+    },
+    {
+      "name": "JavaScript query loop",
+      "language": "javascript",
+      "source": "async function load(ids) { for (const id of ids) await db.query('SELECT id FROM users WHERE id = $1', [id]); }",
+      "expected": ["code/query-in-loop"]
+    },
+    {
+      "name": "JavaScript pure loop",
+      "language": "javascript",
+      "source": "function normalize(items) { for (const item of items) item.trim(); }",
+      "expected": []
+    },
+    {
+      "name": "Python query loop",
+      "language": "python",
+      "source": "def load(ids):\n    for user_id in ids:\n        session.execute(select(User).where(User.id == user_id))\n",
+      "expected": ["code/synchronous-query-loop"]
+    },
+    {
+      "name": "Python pure loop",
+      "language": "python",
+      "source": "def normalize(items):\n    for item in items:\n        item.strip()\n",
+      "expected": []
+    }
+  ]
+}

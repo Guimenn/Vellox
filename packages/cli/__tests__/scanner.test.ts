@@ -84,6 +84,18 @@ describe('Vellox project scanner contract', () => {
     expect(evaluation.violations[0]).toContain('failOnIncompleteAnalysis=true');
   });
 
+  it('exposes SQL parser fallback with a precise location', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'broken.sql'), "SELECT * FROM users WHERE email = 'broken");
+
+    const report = scanProject(directory, 'test');
+    const issue = report.coverage?.issues.find(item => item.file === 'broken.sql');
+
+    expect(issue).toMatchObject({ reason: 'parse-fallback', line: 1, parser: 'vellox-sql-ast', message: 'Unterminated string literal' });
+    expect(report.coverage).toMatchObject({ complete: false, sqlStatements: 1, sqlAstStatements: 0 });
+    expect(report.findings.some(item => item.file === 'broken.sql' && item.ruleId === 'query/select-star')).toBe(true);
+  });
+
   it('produces evidence-backed findings and SQL from the inspected fixture', () => {
     const report = scanProject(fixture(), 'test');
 
@@ -368,6 +380,21 @@ export async function processAll(items) {
   return Promise.all(selected.map(id => prisma.user.findUnique({ where: { id } })));
 }
 `);
+    fs.writeFileSync(path.join(directory, 'src', 'exact-bounds.ts'), `export async function fixed() {
+  for (const id of Array.from({ length: 20 })) await prisma.user.findUnique({ where: { id } });
+}
+export async function sliced(ids) {
+  for (const id of ids.slice(10, 20)) await prisma.user.findUnique({ where: { id } });
+}
+`);
+    fs.writeFileSync(path.join(directory, 'src', 'exact_bounds.py'), `def fixed():
+    for user_id in range(10, 20, 2):
+        session.execute(select(User).where(User.id == user_id))
+
+def reverse():
+    for user_id in range(20, 10, -2):
+        session.execute(select(User).where(User.id == user_id))
+`);
 
     const report = scanProject(directory, 'test');
     const javascript = report.findings.find(item => item.file === 'src/bounded-cost.ts' && item.ruleId === 'code/query-in-loop');
@@ -377,6 +404,8 @@ export async function processAll(items) {
     const guardedPython = report.findings.find(item => item.file === 'src/guarded_cost.py' && item.ruleId === 'code/synchronous-query-loop');
     const largeBound = report.findings.find(item => item.file === 'src/large-bound.ts' && item.ruleId === 'code/query-in-loop');
     const largeFanout = report.findings.find(item => item.file === 'src/large-fanout.ts' && item.ruleId === 'code/unbounded-query-fanout');
+    const exactJavaScript = report.findings.filter(item => item.file === 'src/exact-bounds.ts' && item.ruleId === 'code/query-in-loop');
+    const exactPython = report.findings.filter(item => item.file === 'src/exact_bounds.py' && item.ruleId === 'code/synchronous-query-loop');
 
     expect(javascript).toMatchObject({ severity: 'MEDIUM', metadata: { complexity: 'O(n)', iterationBound: 12, operationsPerIteration: 1 } });
     expect(python).toMatchObject({ severity: 'MEDIUM', metadata: { complexity: 'O(n)', iterationBound: 8, operationsPerIteration: 1 } });
@@ -385,6 +414,8 @@ export async function processAll(items) {
     expect(guardedPython).toMatchObject({ severity: 'MEDIUM', metadata: { iterationBound: 30 } });
     expect(largeBound).toMatchObject({ severity: 'HIGH', metadata: { iterationBound: 1000 } });
     expect(largeFanout?.metadata?.taskUpperBound).toBe(1000);
+    expect(exactJavaScript.map(item => item.metadata?.iterationBound)).toEqual([20, 10]);
+    expect(exactPython.map(item => item.metadata?.iterationBound)).toEqual([5, 5]);
     expect(formatPretty(report)).toContain('at most 12 (statically proven)');
   });
 

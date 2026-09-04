@@ -8,7 +8,10 @@ export const DEFAULT_CONFIG: VelloxConfig = {
   ignore: [],
   rules: {},
   analysis: {
-    maxFileBytes: 2_000_000
+    maxFileBytes: 2_000_000,
+    sqlDialect: 'auto',
+    largeInListThreshold: 100,
+    excessiveOrThreshold: 5
   },
   budgets: {
     maxCritical: 0,
@@ -25,6 +28,12 @@ function finiteNumber(value: unknown, fallback: number): number {
 
 function positiveInteger(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+function sqlDialect(value: unknown): NonNullable<VelloxConfig['analysis']['sqlDialect']> {
+  return ['auto', 'postgresql', 'mysql', 'sqlite'].includes(String(value))
+    ? value as NonNullable<VelloxConfig['analysis']['sqlDialect']>
+    : 'auto';
 }
 
 function stringArray(value: unknown): string[] {
@@ -65,7 +74,10 @@ export function loadConfig(target: string): VelloxConfig {
       ignore: stringArray(input.ignore),
       rules: ruleConfig(input.rules),
       analysis: {
-        maxFileBytes: positiveInteger(analysis.maxFileBytes, DEFAULT_CONFIG.analysis.maxFileBytes)
+        maxFileBytes: positiveInteger(analysis.maxFileBytes, DEFAULT_CONFIG.analysis.maxFileBytes),
+        sqlDialect: sqlDialect(analysis.sqlDialect),
+        largeInListThreshold: positiveInteger(analysis.largeInListThreshold, DEFAULT_CONFIG.analysis.largeInListThreshold!),
+        excessiveOrThreshold: positiveInteger(analysis.excessiveOrThreshold, DEFAULT_CONFIG.analysis.excessiveOrThreshold!)
       },
       budgets: {
         maxCritical: finiteNumber(budgets.maxCritical, DEFAULT_CONFIG.budgets.maxCritical),

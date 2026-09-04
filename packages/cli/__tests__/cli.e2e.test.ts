@@ -132,6 +132,34 @@ describe('published CLI behavior', () => {
     }
   });
 
+  it('reuses a safe clean-commit cache and scopes findings to Git changes', () => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), 'vellox-incremental-e2e-'));
+    fs.mkdirSync(path.join(target, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(target, 'package.json'), JSON.stringify({ name: 'incremental', dependencies: { pg: '^8.0.0' } }));
+    fs.writeFileSync(path.join(target, 'src', 'changed.ts'), 'export const changed = true;\n');
+    fs.writeFileSync(path.join(target, 'src', 'existing.ts'), "export async function existing(ids) { for (const id of ids) await db.query('SELECT id FROM users WHERE id = $1', [id]); }\n");
+    const git = (values: string[]): string => execFileSync('git', values, { cwd: target, encoding: 'utf8' });
+    try {
+      git(['init', '-q']);
+      git(['config', 'user.email', 'vellox@example.test']);
+      git(['config', 'user.name', 'Vellox Test']);
+      git(['add', '.']);
+      git(['commit', '-qm', 'fixture']);
+
+      execFileSync(process.execPath, [cli, 'scan', target], { encoding: 'utf8' });
+      const cached = JSON.parse(execFileSync(process.execPath, [cli, 'scan', target, '--format', 'json'], { encoding: 'utf8' }));
+      expect(cached.coverage).toMatchObject({ scope: 'full', cacheHit: true });
+
+      fs.writeFileSync(path.join(target, 'src', 'changed.ts'), "export async function changed(ids) { for (const id of ids) await db.query('SELECT id FROM users WHERE id = $1', [id]); }\n");
+      const changed = JSON.parse(execFileSync(process.execPath, [cli, 'scan', target, '--changed', '--format', 'json', '--no-write'], { encoding: 'utf8' }));
+      expect(changed.coverage).toMatchObject({ scope: 'changed', changedBase: 'HEAD', filesDiscovered: 1 });
+      expect(changed.findings.some((item: { file?: string }) => item.file === 'src/changed.ts')).toBe(true);
+      expect(changed.findings.some((item: { file?: string }) => item.file === 'src/existing.ts')).toBe(false);
+    } finally {
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+  });
+
   it('executes every workflow command documented in the public CLI reference', () => {
     const run = (command: string[], cwd = fixture): string => execFileSync(process.execPath, [cli, ...command], { cwd, encoding: 'utf8' });
 
@@ -155,6 +183,7 @@ describe('published CLI behavior', () => {
     fs.writeFileSync(optimizationFile, 'SELECT id FROM users WHERE id = $1;\nUPDATE users SET enabled = false;\n');
     const fileOptimization = JSON.parse(run(['optimize', optimizationFile, '--format', 'json']));
     expect(fileOptimization.findings.some((item: { ruleId: string }) => item.ruleId === 'query/unbounded-write')).toBe(true);
+    expect(fileOptimization.coverage).toMatchObject({ complete: true, sqlStatements: 2, sqlAstStatements: 2 });
 
     const sarif = run(['scan', fixture, '--format', 'sarif', '--no-write']);
     expect(JSON.parse(sarif).version).toBe('2.1.0');

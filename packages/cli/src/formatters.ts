@@ -25,7 +25,10 @@ export function formatPretty(report: VelloxReport): string {
   if (report.coverage) {
     lines.splice(4, 0,
       `  Files discovered:  ${report.coverage.filesDiscovered}`,
-      `  Coverage:          ${report.coverage.complete ? 'complete' : `incomplete (${report.coverage.issues.length} issue(s): ${report.coverage.filesSkipped} skipped, ${report.coverage.fallbackFiles} fallback)`}`
+      `  Coverage:          ${report.coverage.complete ? 'complete' : `incomplete (${report.coverage.issues.length} issue(s): ${report.coverage.filesSkipped} skipped, ${report.coverage.fallbackFiles} fallback)`}`,
+      `  Scope:             ${report.coverage.scope === 'changed' ? `changed since ${report.coverage.changedBase}` : 'full project'}`,
+      `  Analysis cache:    ${report.coverage.cacheHit ? 'hit' : 'miss'}`,
+      `  SQL AST:           ${report.coverage.sqlAstStatements ?? 0}/${report.coverage.sqlStatements ?? 0} statement(s)`
     );
     if (report.coverage.issues.length) {
       lines.push('  ANALYSIS COVERAGE');
@@ -33,7 +36,7 @@ export function formatPretty(report: VelloxReport): string {
         const size = issue.sizeBytes !== undefined && issue.limitBytes !== undefined
           ? ` (${issue.sizeBytes} bytes; limit ${issue.limitBytes})`
           : '';
-        lines.push(`  ├─ ${issue.file}${issue.line ? `:${issue.line}` : ''}: ${issue.reason}${issue.parser ? ` (${issue.parser})` : ''}${size}`);
+        lines.push(`  ├─ ${issue.file}${issue.line ? `:${issue.line}` : ''}: ${issue.reason}${issue.parser ? ` (${issue.parser})` : ''}${issue.message ? ` — ${issue.message}` : ''}${size}`);
       }
       lines.push('');
     }
@@ -83,7 +86,7 @@ export function formatMarkdown(report: VelloxReport): string {
   const detail = report.findings.map((item, index) => `### ${index + 1}. ${item.title}\n\n- **Severity:** ${item.severity}\n- **Confidence:** ${item.confidence || 'Not assigned'}\n- **Rule:** \`${item.ruleId}\`\n- **Location:** ${item.file ? `\`${item.file}${item.line ? `:${item.line}` : ''}\`` : 'inline input'}\n- **Evidence:** ${item.evidence}${typeof item.metadata?.callPath === 'string' ? `\n- **Call path:** \`${item.metadata.callPath}\`` : ''}${typeof item.metadata?.complexity === 'string' ? `\n- **Complexity:** \`${item.metadata.complexity}\`` : ''}${item.metadata?.iterationBound !== undefined ? `\n- **Iterations:** ${typeof item.metadata.iterationBound === 'number' ? `at most ${item.metadata.iterationBound} (statically proven)` : item.metadata.iterationBound}` : ''}\n- **Recommendation:** ${item.recommendation}${item.sql ? `\n- **Reviewable SQL:**\n\n\`\`\`sql\n${item.sql}\n\`\`\`` : ''}`).join('\n\n');
 
   const coverage = report.coverage
-    ? `\n\n## Analysis coverage\n\n| Metric | Value |\n| --- | ---: |\n| Files discovered | ${report.coverage.filesDiscovered} |\n| Files analyzed | ${report.coverage.filesAnalyzed} |\n| Files skipped | ${report.coverage.filesSkipped} |\n| Structural parser files | ${report.coverage.structuralFiles} |\n| Conservative fallback files | ${report.coverage.fallbackFiles} |\n| Semantic modules | ${report.coverage.semanticModules} |\n| Status | ${report.coverage.complete ? 'Complete' : 'Incomplete'} |${report.coverage.issues.length ? `\n\n### Coverage issues\n\n${report.coverage.issues.map(issue => `- \`${issue.file}${issue.line ? `:${issue.line}` : ''}\`: ${issue.reason}${issue.parser ? ` (${issue.parser})` : ''}${issue.sizeBytes !== undefined && issue.limitBytes !== undefined ? ` (${issue.sizeBytes} bytes; limit ${issue.limitBytes})` : ''}`).join('\n')}` : ''}`
+    ? `\n\n## Analysis coverage\n\n| Metric | Value |\n| --- | ---: |\n| Files discovered | ${report.coverage.filesDiscovered} |\n| Files analyzed | ${report.coverage.filesAnalyzed} |\n| Files skipped | ${report.coverage.filesSkipped} |\n| Structural parser files | ${report.coverage.structuralFiles} |\n| Conservative fallback files | ${report.coverage.fallbackFiles} |\n| Semantic modules | ${report.coverage.semanticModules} |\n| SQL AST statements | ${report.coverage.sqlAstStatements ?? 0}/${report.coverage.sqlStatements ?? 0} |\n| Status | ${report.coverage.complete ? 'Complete' : 'Incomplete'} |${report.coverage.issues.length ? `\n\n### Coverage issues\n\n${report.coverage.issues.map(issue => `- \`${issue.file}${issue.line ? `:${issue.line}` : ''}\`: ${issue.reason}${issue.parser ? ` (${issue.parser})` : ''}${issue.message ? ` — ${issue.message}` : ''}${issue.sizeBytes !== undefined && issue.limitBytes !== undefined ? ` (${issue.sizeBytes} bytes; limit ${issue.limitBytes})` : ''}`).join('\n')}` : ''}`
     : '';
   return `# Vellox Engineering Report\n\nGenerated from an actual project scan on ${report.generatedAt}.\n\n## Summary\n\n| Metric | Value |\n| --- | ---: |\n| Files inspected | ${report.summary.filesScanned} |\n| Critical findings | ${report.summary.critical} |\n| High findings | ${report.summary.high} |\n| Medium findings | ${report.summary.medium} |\n| Exposed secrets | ${report.summary.secrets} |\n| Infrastructure findings | ${report.summary.infrastructure ?? 0} |\n| Reviewable SQL suggestions | ${report.summary.reviewableSqlFixes} |${coverage}\n\n> Vellox does not invent monetary savings from static analysis. Cost estimates require measured telemetry and an explicit pricing model.\n\n## Findings\n\n${rows.length ? `| Severity | Confidence | Rule | Finding | Location |\n| --- | --- | --- | --- | --- |\n${rows.join('\n')}\n\n${detail}` : 'No supported high-risk patterns were detected.'}\n`;
 }
@@ -110,7 +113,7 @@ export function toSarif(report: VelloxReport): Record<string, unknown> {
         executionSuccessful: report.coverage.complete,
         toolExecutionNotifications: report.coverage.issues.map(issue => ({
           level: 'warning',
-          message: { text: `${issue.file}: ${issue.reason}` },
+          message: { text: `${issue.file}: ${issue.reason}${issue.message ? ` — ${issue.message}` : ''}` },
           locations: [{ physicalLocation: {
             artifactLocation: { uri: issue.file.replace(/\\/g, '/') },
             ...(issue.line ? { region: { startLine: issue.line } } : {})
@@ -174,7 +177,7 @@ export function evaluateBudgets(
   });
   const critical = evaluated.filter(item => item.severity === 'CRITICAL').length;
   const high = evaluated.filter(item => item.severity === 'HIGH').length;
-  const secrets = evaluated.filter(item => item.category === 'security').length;
+  const secrets = evaluated.filter(item => item.ruleId.startsWith('secret/')).length;
   const violations: string[] = [];
   if (critical > budgets.maxCritical) violations.push(`${critical} critical finding(s) exceed maxCritical=${budgets.maxCritical}`);
   if (high > budgets.maxHigh) violations.push(`${high} high finding(s) exceed maxHigh=${budgets.maxHigh}`);

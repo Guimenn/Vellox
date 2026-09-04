@@ -11,7 +11,7 @@ export interface RuleDefinition {
 function categoryFor(id: string): FindingCategory {
   if (id.startsWith('code/')) return 'code';
   if (id.startsWith('query/')) return 'query';
-  if (id.startsWith('secret/')) return 'security';
+  if (id.startsWith('secret/') || id.startsWith('security/')) return 'security';
   if (id.startsWith('infra/')) return 'infrastructure';
   return 'database';
 }
@@ -38,13 +38,18 @@ export const RULE_CATALOG: RuleDefinition[] = [
   define('code/unbounded-query-fanout', 'HIGH', 'Database query fan-out has no concurrency bound'),
 
   define('query/deep-offset', 'HIGH', 'Deep OFFSET pagination'),
+  define('query/cartesian-product', 'HIGH', 'Join can produce a Cartesian product'),
+  define('query/correlated-subquery', 'MEDIUM', 'Correlated subquery can execute per outer row', 'MEDIUM'),
   define('query/distinct-join', 'MEDIUM', 'DISTINCT may hide join multiplication'),
   define('query/dynamic-sql-construction', 'HIGH', 'SQL is assembled from runtime values'),
   define('query/excessive-joins', 'MEDIUM', 'Large join graph needs cardinality review'),
   define('query/function-on-filter', 'MEDIUM', 'Function-wrapped filter column'),
   define('query/leading-wildcard', 'HIGH', 'Leading wildcard search'),
+  define('query/large-in-list', 'MEDIUM', 'Large IN list increases parse and planning work'),
   define('query/missing-filter', 'MEDIUM', 'SELECT without a filter'),
   define('query/not-in-null', 'HIGH', 'NOT IN subquery null trap'),
+  define('query/non-sargable-predicate', 'MEDIUM', 'Predicate transforms an indexed candidate column'),
+  define('query/or-predicate-explosion', 'MEDIUM', 'Large OR chain can prevent efficient access paths', 'MEDIUM'),
   define('query/random-sort', 'HIGH', 'Random full-set sort'),
   define('query/redundant-distinct', 'MEDIUM', 'DISTINCT may duplicate GROUP BY work'),
   define('query/select-star', 'MEDIUM', 'Wildcard SELECT retrieval'),
@@ -52,6 +57,7 @@ export const RULE_CATALOG: RuleDefinition[] = [
   define('query/unbounded-select', 'MEDIUM', 'Unbounded SELECT query'),
   define('query/unbounded-write', 'HIGH', 'Write statement has no WHERE clause'),
   define('query/union-deduplication', 'MEDIUM', 'UNION performs a global deduplication'),
+  define('query/unstable-pagination', 'HIGH', 'OFFSET pagination has no deterministic order'),
 
   define('prisma/missing-relation-index', 'MEDIUM', 'Missing Prisma relation index'),
   define('drizzle/missing-relation-index', 'MEDIUM', 'Missing Drizzle relation index'),
@@ -79,7 +85,8 @@ export const RULE_CATALOG: RuleDefinition[] = [
   define('secret/google-api-key', 'CRITICAL', 'Google API key exposed'),
   define('secret/openai-api-key', 'CRITICAL', 'OpenAI API key exposed'),
   define('secret/private-key', 'CRITICAL', 'Private key exposed'),
-  define('secret/stripe-live-key', 'CRITICAL', 'Stripe live key exposed')
+  define('secret/stripe-live-key', 'CRITICAL', 'Stripe live key exposed'),
+  define('security/sql-injection-flow', 'CRITICAL', 'Untrusted request data reaches a database query')
 ].sort((left, right) => left.id.localeCompare(right.id));
 
 export function filterRules(search = ''): RuleDefinition[] {

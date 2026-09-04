@@ -38,13 +38,17 @@ export interface VelloxAnalysisIssue {
   file: string;
   reason: AnalysisIssueReason;
   line?: number;
-  parser?: 'babel' | 'lezer-python';
+  parser?: 'babel' | 'lezer-python' | 'vellox-sql-ast';
+  message?: string;
   sizeBytes?: number;
   limitBytes?: number;
 }
 
 export interface VelloxCoverage {
   complete: boolean;
+  scope?: 'full' | 'changed';
+  changedBase?: string;
+  cacheHit?: boolean;
   filesDiscovered: number;
   filesAnalyzed: number;
   filesSkipped: number;
@@ -52,6 +56,8 @@ export interface VelloxCoverage {
   fallbackFiles: number;
   semanticModules: number;
   semanticFunctions: number;
+  sqlStatements?: number;
+  sqlAstStatements?: number;
   issues: VelloxAnalysisIssue[];
 }
 
@@ -77,6 +83,9 @@ export interface VelloxBudgets {
 
 export interface VelloxAnalysisConfig {
   maxFileBytes: number;
+  sqlDialect?: 'auto' | 'postgresql' | 'mysql' | 'sqlite';
+  largeInListThreshold?: number;
+  excessiveOrThreshold?: number;
 }
 
 export interface VelloxConfig {

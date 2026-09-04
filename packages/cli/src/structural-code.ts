@@ -41,7 +41,9 @@ function ignoredAt(lines: string[], line: number): boolean {
 
 function intentionalLoopContext(lines: string[], line: number): boolean {
   const context = lines.slice(Math.max(0, line - 6), line).join('\n');
-  return /\b(?:attempts?|retries|retry|tentativas?|batch(?:es)?|chunks?|lotes?|cursor|hasMore|nextPage|pageSize|pageNumber|currentPage|pagina(?:s|ção)?|página(?:s|ção)?)\b/i.test(context)
+  const header = lines[line - 1] || '';
+  return /\b(?:attempts?|retries|retry|tentativas?)\b/i.test(header)
+    || /\b(?:batch(?:es)?|chunks?|lotes?|cursor|hasMore|nextPage|pageSize|pageNumber|currentPage|pagina(?:s|ção)?|página(?:s|ção)?)\b/i.test(context)
     || /(?:one at a time|one-by-one|uma (?:de cada|por) vez|sequential(?:ly)?|serial(?:ly)?|rate.?limit|backpressure|\b429\b|\b502\b)/i.test(context);
 }
 
@@ -77,12 +79,18 @@ function isJavaScriptDatabaseCall(node: any, content: string): boolean {
   const name = callName(node.callee, content);
   const lower = name.toLowerCase();
   const method = lower.split('.').at(-1) || '';
-  const databaseMethod = /^(?:aggregate|bulkcreate|bulkdelete|bulkwrite|count|countdocuments|create|delete|deleteone|deletemany|destroy|execute|executemany|find|findall|findbyid|findbyidandupdate|findfirst|findmany|findone|findoneandupdate|findunique|insert|insertmany|query|raw|save|scalar|select|update|updateone|updatemany|upsert)$/i.test(method);
+  const databaseMethod = /^(?:\$executeraw(?:unsafe)?|\$queryraw(?:unsafe)?|aggregate|bulkcreate|bulkdelete|bulkwrite|count|countdocuments|create|delete|deleteone|deletemany|destroy|execute|executemany|find|findall|findbyid|findbyidandupdate|findfirst|findmany|findone|findoneandupdate|findunique|insert|insertmany|query|raw|save|scalar|select|update|updateone|updatemany|upsert)$/i.test(method);
   if (!databaseMethod) return false;
   if (/\b(?:prisma|sequelize|typeorm|mongoose|knex|database|connection|cursor|session|entitymanager|repository|repo|pool|db|transaction|trx|tx)\b/i.test(name)) return true;
   const root = name.split('.')[0] || '';
   return /^[A-Z][A-Za-z0-9_$]*(?:Model)?$/.test(root) && !/^[A-Z0-9_$]+$/.test(root)
     && /^(?:aggregate|count|create|deleteMany|deleteOne|find|findById|findOne|insertMany|updateMany|updateOne)$/i.test(method);
+}
+
+function isJavaScriptRawSqlCall(node: any, content: string): boolean {
+  if (!isJavaScriptDatabaseCall(node, content)) return false;
+  const method = callName(node.callee, content).split('.').at(-1) || '';
+  return /^(?:\$executeraw(?:unsafe)?|\$queryraw(?:unsafe)?|execute|executemany|query|raw)$/i.test(method);
 }
 
 function isTransactionCall(name: string): boolean {
@@ -289,6 +297,9 @@ function collectJavaScriptBoundedBindings(program: any, content: string): JavaSc
     for (const child of jsChildren(node)) firstPass(child, nextOwner);
   };
   firstPass(program, program);
+  for (const owner of owners) {
+    for (const [name, value] of constants.get(owner) || []) byOwner.get(owner)!.set(name, value);
+  }
 
   const boundedExpression = (node: any, owner: object): number | undefined => {
     if (!node) return undefined;
@@ -357,10 +368,18 @@ function javascriptCollectionBound(node: any, content: string, bindings: Readonl
   if (node.type === 'ArrayExpression' && !(node.elements || []).some((element: any) => element?.type === 'SpreadElement')) {
     return node.elements?.length || 0;
   }
+  const numeric = (candidate: any): number | undefined => candidate?.type === 'NumericLiteral'
+    ? staticCount(candidate.value)
+    : candidate?.type === 'Identifier' ? bindings.get(candidate.name) : undefined;
+  if (node.type === 'NewExpression' && callName(node.callee, content) === 'Array') return numeric(node.arguments?.[0]);
+  if ((node.type === 'CallExpression' || node.type === 'OptionalCallExpression') && callName(node.callee, content) === 'Array.from') {
+    const length = node.arguments?.[0]?.properties?.find((property: any) => callName(property.key, content) === 'length')?.value;
+    return numeric(length);
+  }
   if ((node.type === 'CallExpression' || node.type === 'OptionalCallExpression') && jsProperty(node, content) === 'slice') {
-    const start = node.arguments?.[0]?.type === 'NumericLiteral' ? node.arguments[0].value : 0;
-    const end = node.arguments?.[1]?.type === 'NumericLiteral' ? node.arguments[1].value : undefined;
-    return start === 0 ? staticCount(end) : undefined;
+    const start = numeric(node.arguments?.[0]) ?? 0;
+    const end = numeric(node.arguments?.[1]);
+    return end !== undefined ? staticCount(Math.max(0, end - start)) : undefined;
   }
   return undefined;
 }
@@ -548,6 +567,57 @@ function javascriptCopyOnGrow(node: any, ancestors: any[], content: string, bind
   return undefined;
 }
 
+function javascriptExpressionTainted(node: any, tainted: ReadonlySet<string>, content: string): boolean {
+  if (!node) return false;
+  if (node.type === 'Identifier') return tainted.has(node.name);
+  const name = callName(node, content);
+  if (/^(?:ctx|context|req|request)\.(?:body|cookies|headers|params|query)(?:\.|$)/i.test(name)) return true;
+  if ((node.type === 'CallExpression' || node.type === 'OptionalCallExpression')
+    && /^(?:Number|parseFloat|parseInt)$/.test(callName(node.callee, content))) return false;
+  return jsChildren(node).some(child => javascriptExpressionTainted(child, tainted, content));
+}
+
+function collectJavaScriptTaintedBindings(program: any, content: string): WeakMap<object, Set<string>> {
+  const byOwner = new WeakMap<object, Set<string>>();
+  const ensure = (owner: object): Set<string> => {
+    let values = byOwner.get(owner);
+    if (!values) {
+      values = new Set();
+      byOwner.set(owner, values);
+    }
+    return values;
+  };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const visit = (node: any, owner: object): void => {
+      const nextOwner = JS_FUNCTION_TYPES.has(node?.type) ? node : owner;
+      const tainted = ensure(nextOwner);
+      if (node?.type === 'VariableDeclarator' && javascriptExpressionTainted(node.init, tainted, content)) {
+        const names = node.id?.type === 'ObjectPattern'
+          ? (node.id.properties || []).map((property: any) => callName(property.value, content))
+          : [callName(node.id, content)];
+        for (const name of names.filter(Boolean)) {
+          if (!tainted.has(name)) {
+            tainted.add(name);
+            changed = true;
+          }
+        }
+      }
+      if (node?.type === 'AssignmentExpression' && javascriptExpressionTainted(node.right, tainted, content)) {
+        const name = callName(node.left, content);
+        if (/^[A-Za-z_$][\w$]*$/.test(name) && !tainted.has(name)) {
+          tainted.add(name);
+          changed = true;
+        }
+      }
+      for (const child of jsChildren(node)) visit(child, nextOwner);
+    };
+    visit(program, program);
+  }
+  return byOwner;
+}
+
 export function scanJavaScriptStructure(content: string, relativeFile: string, externalQueryFunctions: ReadonlyMap<string, string> = new Map()): StructuralScanResult {
   const findings: VelloxFindingInput[] = [];
   const lines = content.split('\n');
@@ -571,10 +641,12 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
   }
   const queryFunctions = collectJavaScriptQueryFunctions(program, content, externalQueryFunctions);
   const boundedBindings = collectJavaScriptBoundedBindings(program, content);
+  const taintedBindings = collectJavaScriptTaintedBindings(program, content);
 
   const walk = (node: any, ancestors: any[] = [], parent?: any): void => {
     const line = node.loc?.start?.line || (typeof node.start === 'number' ? lineAt(content, node.start) : 1);
     const bindings = boundedBindings.byOwner.get(javascriptScopeOwner(ancestors, boundedBindings.program)) || new Map<string, number>();
+    const tainted = taintedBindings.get(javascriptScopeOwner(ancestors, boundedBindings.program)) || new Set<string>();
     const growthPattern = !ignoredAt(lines, line) ? javascriptCopyOnGrow(node, ancestors, content, bindings) : undefined;
     if (growthPattern) {
       findings.push(structuralFinding({
@@ -645,8 +717,33 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
     if ((node.type === 'CallExpression' || node.type === 'OptionalCallExpression') && !ignoredAt(lines, line)) {
       const property = jsProperty(node, content);
       const callback = node.arguments?.find((argument: any) => JS_FUNCTION_TYPES.has(argument?.type));
+      const callbackReference = node.arguments?.[0];
+      const callbackName = !JS_FUNCTION_TYPES.has(callbackReference?.type) ? callName(callbackReference, content) : '';
       const repeatedBy = nearestJavaScriptIteration(ancestors, content, node.start);
       const databaseCall = isJavaScriptDatabaseCall(node, content);
+      const rawSqlCall = isJavaScriptRawSqlCall(node, content);
+
+      const promiseFanoutParent = (parent?.type === 'CallExpression' || parent?.type === 'OptionalCallExpression')
+        && /^Promise\.(?:all|allSettled)$/.test(callName(parent.callee, content));
+      if (JS_ITERATION_METHODS.has(property) && callbackName && queryFunctions.has(callbackName) && !promiseFanoutParent) {
+        const queryPath = externalQueryFunctions.get(callbackName);
+        const iterationBound = javascriptCollectionBound(node.callee?.object, content, bindings);
+        const defaultSeverity = hotspotSeverity(relativeFile);
+        findings.push(structuralFinding({
+          ruleId: 'code/query-in-loop',
+          severity: iterationBound !== undefined && iterationBound <= MAX_STATIC_ITERATION_BOUND && defaultSeverity === 'HIGH' ? 'MEDIUM' : defaultSeverity,
+          confidence: 'MEDIUM', category: 'code', title: 'Callback reaching the database runs once per collection item',
+          evidence: sourceLine(content, line),
+          recommendation: 'Fetch or mutate the required records in bulk, or apply measured bounded concurrency when bulk semantics are unavailable.',
+          file: relativeFile, line,
+          metadata: {
+            parser: 'babel', pattern: queryPath ? 'cross-file-callback-database' : 'callback-database',
+            complexity: 'O(n)', operationsPerIteration: 1,
+            iterationBound: iterationBound ?? 'input-dependent',
+            ...(queryPath ? { callPath: queryPath } : {})
+          }
+        }));
+      }
 
       if (repeatedBy && !staticallyBoundedJavaScriptIteration(repeatedBy, content, bindings)
         && !boundedCollection(node.callee?.object, content, bindings)
@@ -709,9 +806,15 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
           : '';
         const explicitLimiter = /\b(?:limit|limiter|semaphore|workerPool|pool)\s*\(/i.test(mapText);
         if (mapCall && !boundedCollection(mapCall.callee?.object, content, bindings) && !explicitLimiter) {
-          const mapCallback = mapCall.arguments?.find((argument: any) => JS_FUNCTION_TYPES.has(argument?.type));
-          const queryFanout = Boolean(mapCallback && javascriptFunctionContainsQuery(mapCallback.body, content, queryFunctions));
-          const queryPath = mapCallback ? javascriptExternalQueryPath(mapCallback.body, content, externalQueryFunctions) : undefined;
+          const mapCallback = mapCall.arguments?.[0];
+          const callbackName = callName(mapCallback, content);
+          const inlineCallback = JS_FUNCTION_TYPES.has(mapCallback?.type);
+          const queryFanout = inlineCallback
+            ? javascriptFunctionContainsQuery(mapCallback.body, content, queryFunctions)
+            : queryFunctions.has(callbackName);
+          const queryPath = inlineCallback
+            ? javascriptExternalQueryPath(mapCallback.body, content, externalQueryFunctions)
+            : externalQueryFunctions.get(callbackName);
           const taskUpperBound = javascriptCollectionBound(mapCall.callee?.object, content, bindings);
           findings.push(structuralFinding({
             ruleId: queryFanout ? 'code/unbounded-query-fanout' : 'code/unbounded-async-fanout', severity: hotspotSeverity(relativeFile), category: 'code',
@@ -729,17 +832,26 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
         }
       }
 
-      if (databaseCall) {
+      if (rawSqlCall) {
         const query = node.arguments?.[0];
         const dynamic = query?.type === 'BinaryExpression'
           || (query?.type === 'TemplateLiteral' && (query.expressions?.length || 0) > 0);
-        if (dynamic) {
+        const queryTainted = javascriptExpressionTainted(query, tainted, content);
+        if (dynamic || queryTainted) {
           findings.push(structuralFinding({
             ruleId: 'query/dynamic-sql-construction', severity: 'HIGH', category: 'query',
             title: 'SQL is assembled from runtime values',
             evidence: sourceLine(content, line),
             recommendation: 'Use driver placeholders or the ORM parameter API so values never change SQL structure or query-plan reuse.',
             file: relativeFile, line, metadata: { parser: 'babel', call: name }
+          }));
+        }
+        if (queryTainted) {
+          findings.push(structuralFinding({
+            ruleId: 'security/sql-injection-flow', severity: 'CRITICAL', category: 'security',
+            title: 'Untrusted request data reaches a database query', evidence: sourceLine(content, line),
+            recommendation: 'Bind the request value through the driver or ORM parameter API; never concatenate or interpolate it into SQL text.',
+            file: relativeFile, line, metadata: { parser: 'babel', call: name, source: 'request-data', sink: 'database-query' }
           }));
         }
       }
@@ -969,6 +1081,9 @@ function collectPythonBoundedBindings(root: PythonNode, content: string): Python
     for (const child of pythonChildren(node)) firstPass(child, nextOwner);
   };
   firstPass(root, rootKey);
+  for (const [owner, values] of constants) {
+    for (const [name, value] of values) byOwner.get(owner)!.set(name, value);
+  }
 
   let changed = true;
   while (changed) {
@@ -984,9 +1099,11 @@ function collectPythonBoundedBindings(root: PythonNode, content: string): Python
             if (/^\d+$/.test(raw)) return staticCount(Number(raw));
             return constants.get(nextOwner)?.get(raw) ?? constants.get(rootKey)?.get(raw);
           };
-          const slice = /\[\s*(?:0)?\s*:\s*([A-Za-z_]\w*|\d+)\s*\]\s*$/.exec(match[2]!);
-          const islice = /\bislice\s*\([^,]+,\s*([A-Za-z_]\w*|\d+)\s*\)/.exec(match[2]!);
-          const limit = boundValue(slice?.[1] || islice?.[1] || '');
+          const slice = /\[\s*([A-Za-z_]\w*|\d+)?\s*:\s*([A-Za-z_]\w*|\d+)\s*\]\s*$/.exec(match[2]!);
+          const islice = /\bislice\s*\([^,]+,\s*(?:([A-Za-z_]\w*|\d+)\s*,\s*)?([A-Za-z_]\w*|\d+)\s*\)/.exec(match[2]!);
+          const start = boundValue(slice?.[1] || islice?.[1] || '0') || 0;
+          const end = boundValue(slice?.[2] || islice?.[2] || '');
+          const limit = end === undefined ? undefined : Math.max(0, end - start);
           if (!bounds.has(match[1]!) && limit !== undefined && limit >= 0) {
             bounds.set(match[1]!, limit);
             changed = true;
@@ -1000,13 +1117,71 @@ function collectPythonBoundedBindings(root: PythonNode, content: string): Python
   return { byOwner, root: rootKey };
 }
 
+function pythonExpressionTainted(expression: string, tainted: ReadonlySet<string>): boolean {
+  if (/^\s*(?:Decimal|UUID|float|int)\s*\(/.test(expression)) return false;
+  if (/\b(?:ctx|context|req|request)\.(?:args|body|cookies|form|headers|json|path_params|query_params)(?:\.|\[|\b)/i.test(expression)) return true;
+  return [...tainted].some(name => new RegExp(`\\b${name}\\b`).test(expression));
+}
+
+function collectPythonTaintedBindings(root: PythonNode, content: string): Map<string, Set<string>> {
+  const rootKey = pythonScopeKey(root);
+  const byOwner = new Map<string, Set<string>>([[rootKey, new Set()]]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const visit = (node: PythonNode, owner: string): void => {
+      const nextOwner = node.name === 'FunctionDefinition' ? pythonScopeKey(node) : owner;
+      const values = byOwner.get(nextOwner) || new Set<string>();
+      byOwner.set(nextOwner, values);
+      if (node.name === 'AssignStatement') {
+        const assignment = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(content.slice(node.from, node.to).trim());
+        if (assignment && pythonExpressionTainted(assignment[2]!, values) && !values.has(assignment[1]!)) {
+          values.add(assignment[1]!);
+          changed = true;
+        }
+      }
+      for (const child of pythonChildren(node)) visit(child, nextOwner);
+    };
+    visit(root, rootKey);
+  }
+  return byOwner;
+}
+
+function pythonSqlArgumentTainted(callText: string, tainted: ReadonlySet<string>): boolean {
+  const open = callText.indexOf('(');
+  if (open < 0) return false;
+  const argument = callText.slice(open + 1).trim();
+  const variable = /^([A-Za-z_]\w*)\s*(?:,|\))/.exec(argument)?.[1];
+  if (variable && tainted.has(variable)) return true;
+  const dynamic = /^(?:f["']|["'][\s\S]*["']\s*(?:\+|%)|[\s\S]*\.format\s*\()/i.test(argument);
+  return dynamic && pythonExpressionTainted(argument, tainted);
+}
+
 function pythonIterationBound(node: PythonNode, content: string, bindings: ReadonlyMap<string, number> = new Map()): number | undefined {
   const lineEnd = content.indexOf('\n', node.from);
   const header = content.slice(node.from, Math.min(node.to, lineEnd < 0 ? node.to : lineEnd));
-  const range = /\brange\s*\(\s*(\d+)\s*\)/.exec(header);
-  if (range && Number.isSafeInteger(Number(range[1]))) return Number(range[1]);
-  const slice = /\bin\s+[A-Za-z_]\w*\[\s*(?:0)?\s*:\s*(\d+)\s*\]\s*:/.exec(header);
-  if (slice && Number.isSafeInteger(Number(slice[1]))) return Number(slice[1]);
+  const value = (raw: string): number | undefined => /^-?\d+$/.test(raw.trim())
+    ? Number(raw.trim())
+    : bindings.get(raw.trim());
+  const range = /\brange\s*\(([^()]*)\)/.exec(header);
+  if (range) {
+    const args = range[1]!.split(',').map(part => value(part));
+    if (args.length >= 1 && args.length <= 3 && args.every(item => item !== undefined)) {
+      const start = args.length === 1 ? 0 : args[0]!;
+      const stop = args.length === 1 ? args[0]! : args[1]!;
+      const step = args.length === 3 ? args[2]! : 1;
+      if (step !== 0) {
+        const count = step > 0 ? Math.max(0, Math.ceil((stop - start) / step)) : Math.max(0, Math.ceil((start - stop) / -step));
+        if (Number.isSafeInteger(count)) return count;
+      }
+    }
+  }
+  const slice = /\bin\s+[A-Za-z_]\w*\[\s*([A-Za-z_]\w*|\d+)?\s*:\s*([A-Za-z_]\w*|\d+)\s*\]\s*:/.exec(header);
+  if (slice) {
+    const start = value(slice[1] || '0');
+    const end = value(slice[2]!);
+    if (start !== undefined && end !== undefined) return Math.max(0, end - start);
+  }
   const literal = /\bin\s*(\[[^\]]{0,300}\]|\([^)]{0,300}\))\s*:/.exec(header)?.[1];
   if (literal && !literal.includes('*')) {
     const body = literal.slice(1, -1).trim();
@@ -1119,10 +1294,12 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
   if (syntaxError) return { findings, parsed: false, parseError: { line: lineAt(content, syntaxError.from), parser: 'lezer-python' } };
   const queryFunctions = collectPythonQueryFunctions(root, content, externalQueryFunctions);
   const boundedBindings = collectPythonBoundedBindings(root, content);
+  const taintedBindings = collectPythonTaintedBindings(root, content);
 
   const walk = (node: PythonNode, ancestors: PythonNode[] = []): void => {
     const line = lineAt(content, node.from);
     const bindings = boundedBindings.byOwner.get(pythonScopeOwner(ancestors, root)) || new Map<string, number>();
+    const tainted = taintedBindings.get(pythonScopeOwner(ancestors, root)) || new Set<string>();
     const growthPattern = !ignoredAt(lines, line) ? pythonCopyOnGrow(node, ancestors, content, bindings) : undefined;
     if (growthPattern) {
       findings.push(structuralFinding({
@@ -1250,12 +1427,21 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
       const insideLoop = ancestors.some(ancestor => PYTHON_LOOP_TYPES.has(ancestor.name));
       const blockingIo = /^(?:requests\.(?:delete|get|head|options|patch|post|put)|time\.sleep|subprocess\.(?:call|check_call|check_output|run)|os\.system|urllib\.request\.urlopen)$/i.test(name);
       const blockingDatabase = databaseCall;
-      if (blockingDatabase && /\(\s*(?:f["']|["'][^"']*["']\s*(?:\+|%)|[^)]*\.format\s*\()/i.test(callText)) {
+      const rawSqlCall = /(?:^|\.)(?:execute|executemany|raw)$/i.test(name);
+      if (rawSqlCall && /\(\s*(?:f["']|["'][^"']*["']\s*(?:\+|%)|[^)]*\.format\s*\()/i.test(callText)) {
         findings.push(structuralFinding({
           ruleId: 'query/dynamic-sql-construction', severity: 'HIGH', category: 'query',
           title: 'SQL is assembled from runtime values', evidence: sourceLine(content, line),
           recommendation: 'Use bound parameters from the database driver instead of f-strings, concatenation, percent formatting, or .format().',
           file: relativeFile, line, metadata: { parser: 'lezer-python', call: name }
+        }));
+      }
+      if (rawSqlCall && pythonSqlArgumentTainted(callText, tainted)) {
+        findings.push(structuralFinding({
+          ruleId: 'security/sql-injection-flow', severity: 'CRITICAL', category: 'security',
+          title: 'Untrusted request data reaches a database query', evidence: sourceLine(content, line),
+          recommendation: 'Bind the request value through the driver or ORM parameter API; never concatenate or interpolate it into SQL text.',
+          file: relativeFile, line, metadata: { parser: 'lezer-python', call: name, source: 'request-data', sink: 'database-query' }
         }));
       }
       if (asyncOwner && !awaited && (blockingIo || (blockingDatabase && !insideLoop))) {

@@ -206,6 +206,36 @@ const corpus: CorpusCase[] = [
     name: 'Python linear append and flatten', language: 'python',
     source: 'def copy(items):\n    result = []\n    for item in items:\n        result.append(item)\n    return [item for chunk in result for item in chunk]\n',
     forbidden: ['code/quadratic-collection-growth', 'code/quadratic-list-flatten']
+  },
+  {
+    name: 'JavaScript request data propagated into SQL text', language: 'javascript',
+    source: "function handler(req) { const id = req.query.id; const sql = 'SELECT * FROM users WHERE id = ' + id; return db.query(sql); }",
+    expected: ['security/sql-injection-flow', 'query/dynamic-sql-construction']
+  },
+  {
+    name: 'JavaScript request data bound as a parameter', language: 'javascript',
+    source: "function handler(req) { const id = req.query.id; return db.query('SELECT * FROM users WHERE id = $1', [id]); }",
+    forbidden: ['security/sql-injection-flow', 'query/dynamic-sql-construction']
+  },
+  {
+    name: 'JavaScript request data passed through Prisma predicates', language: 'javascript',
+    source: 'function handler(req) { return prisma.user.findUnique({ where: { id: req.params.id } }); }',
+    forbidden: ['security/sql-injection-flow', 'query/dynamic-sql-construction']
+  },
+  {
+    name: 'JavaScript request data passed through Mongo predicates', language: 'javascript',
+    source: 'function handler(req) { return db.collection.find({ email: req.query.email }); }',
+    forbidden: ['security/sql-injection-flow', 'query/dynamic-sql-construction']
+  },
+  {
+    name: 'Python request data propagated into SQL text', language: 'python',
+    source: "def handler(request):\n    user_id = request.args.get('id')\n    sql = f'SELECT * FROM users WHERE id = {user_id}'\n    return cursor.execute(sql)\n",
+    expected: ['security/sql-injection-flow']
+  },
+  {
+    name: 'Python request data bound as a parameter', language: 'python',
+    source: "def handler(request):\n    user_id = request.args.get('id')\n    return cursor.execute('SELECT * FROM users WHERE id = %s', (user_id,))\n",
+    forbidden: ['security/sql-injection-flow']
   }
 ];
 
