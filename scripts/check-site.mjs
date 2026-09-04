@@ -4,6 +4,8 @@ import path from 'node:path';
 
 const root = process.cwd();
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+if (!html.includes('id="npm-version">npm</span>')) throw new Error('Landing npm fallback must remain registry-neutral.');
+if (!html.includes('https://registry.npmjs.org/vellox/latest')) throw new Error('Landing must resolve the published npm version dynamically.');
 const localAssets = [...html.matchAll(/(?:src|href)="(public\/[^"]+)"/g)].map(match => match[1]);
 const missing = [...new Set(localAssets)].filter(asset => !fs.existsSync(path.join(root, asset)));
 if (missing.length) throw new Error('Missing landing assets: ' + missing.join(', '));

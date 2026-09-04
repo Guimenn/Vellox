@@ -239,6 +239,10 @@ python3 -m http.server 4173
 
 Then open `http://localhost:4173`.
 
+### Release
+
+The package version is synchronized across the workspace with `pnpm version:set <version>`. After the full test suite passes on `main`, pushing an annotated tag with the exact `v<version>` value starts the protected publish workflow. The workflow validates the tag, rebuilds and tests the repository, publishes the CLI to npm with provenance, verifies the registry artifact, and only then creates the GitHub Release.
+
 ## License
 
 Copyright © 2026 Guilherme Men. All rights reserved.

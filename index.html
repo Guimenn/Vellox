@@ -522,7 +522,7 @@
       <div class="container">
         <div class="hero-grid">
           <div class="hero-main">
-            <a class="release-pill hero-reveal" href="https://www.npmjs.com/package/vellox" target="_blank" rel="noreferrer"><span id="npm-version">v0.8.0</span> Latest release on NPM ↗</a>
+            <a class="release-pill hero-reveal" href="https://www.npmjs.com/package/vellox" target="_blank" rel="noreferrer"><span id="npm-version">npm</span> Latest release ↗</a>
             <h1 class="hero-title" aria-label="Your cloud isn't expensive. Your code is.">
               <span class="line"><span>Your cloud isn’t</span></span>
               <span class="line"><span>expensive. <em>Your</em></span></span>
@@ -724,7 +724,7 @@
       fetch("https://registry.npmjs.org/vellox/latest", { headers: { Accept: "application/json" } })
         .then(response => response.ok ? response.json() : Promise.reject(new Error("NPM registry unavailable")))
         .then(pkg => { if (pkg.version) versionLabel.textContent = `v${pkg.version}`; })
-        .catch(() => { /* Keep the current published version as a resilient fallback. */ });
+        .catch(() => { /* Keep the registry-neutral fallback when npm is unavailable. */ });
 
       let activeStage = stagePanels.findIndex(panel => panel.classList.contains("is-active"));
 
