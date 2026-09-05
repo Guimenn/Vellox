@@ -6,6 +6,9 @@ const root = process.cwd();
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 if (!html.includes('id="npm-version">npm</span>')) throw new Error('Landing npm fallback must remain registry-neutral.');
 if (!html.includes('https://registry.npmjs.org/vellox/latest')) throw new Error('Landing must resolve the published npm version dynamically.');
+if (!html.includes('<link rel="canonical" href="https://vellox.guimen.dev/"')) throw new Error('Landing canonical URL must use the production domain.');
+if (!html.includes('https://vellox.guimen.dev/public/og-vellox.png')) throw new Error('Landing social preview must use the production Open Graph image.');
+if (!fs.existsSync(path.join(root, 'public', 'og-vellox.png'))) throw new Error('Landing Open Graph image is missing.');
 for (const command of ['npx --yes vellox', 'npx --yes vellox baseline', 'npx --yes vellox ci']) {
   if (!html.includes(`data-copy="${command}"`)) throw new Error('Landing quick path is missing: ' + command);
 }

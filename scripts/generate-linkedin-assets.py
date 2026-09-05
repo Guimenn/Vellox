@@ -232,6 +232,44 @@ def real_result() -> Image.Image:
     return image
 
 
+def open_graph_cover() -> Image.Image:
+    width = 1200
+    height = 630
+    image = Image.new("RGB", (width, height), BG)
+    pixels = image.load()
+    for y in range(height):
+        for x in range(width):
+            distance = math.sqrt(((x - 965) / 630) ** 2 + ((y - 180) / 480) ** 2)
+            glow = max(0.0, 1.0 - distance) ** 2
+            pixels[x, y] = (int(6 + 11 * glow), int(8 + 24 * glow), int(6 + 5 * glow))
+    draw = ImageDraw.Draw(image, "RGBA")
+    for x in range(0, width, 54):
+        draw.line((x, 0, x, height), fill=(200, 255, 83, 8), width=1)
+    for y in range(0, height, 54):
+        draw.line((0, y, width, y), fill=(200, 255, 83, 6), width=1)
+    logo = Image.open(LOGO).convert("RGBA")
+    logo.thumbnail((390, 390), Image.Resampling.LANCZOS)
+    glow_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    glow_logo = logo.copy()
+    glow_logo.putalpha(glow_logo.getchannel("A").point(lambda a: int(a * 0.58)))
+    glow_layer.alpha_composite(glow_logo, (770, 112))
+    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(28))
+    image.paste(glow_layer, (0, 0), glow_layer)
+    image.paste(logo, (770, 112), logo)
+
+    draw = ImageDraw.Draw(image)
+    draw.text((64, 54), "VELLOX", font=font(FONT_BOLD, 28), fill=WHITE)
+    draw.text((64, 94), "LOCAL PERFORMANCE INTELLIGENCE", font=font(FONT_MONO, 12), fill=MUTED_2)
+    draw.line((64, 130, width - 64, 130), fill=LINE, width=1)
+    draw.text((64, 190), "Encontre o gargalo", font=font(FONT_BOLD, 58), fill=WHITE)
+    draw.text((64, 260), "antes da produção.", font=font(FONT_BOLD, 58), fill=GREEN)
+    draw.text((64, 359), "Python  •  JavaScript  •  TypeScript  •  SQL", font=font(FONT_MONO, 17), fill=MUTED)
+    rounded_rectangle(draw, (64, 432, 610, 526), 18, SURFACE, outline=LINE)
+    draw.text((92, 462), "npx --yes vellox", font=font(FONT_MONO_BOLD, 24), fill=GREEN)
+    draw.text((64, 568), "EVIDENCE-FIRST  /  SOURCE AVAILABLE", font=font(FONT_MONO_BOLD, 13), fill=MUTED_2)
+    return image
+
+
 def main() -> None:
     OUTPUT.mkdir(parents=True, exist_ok=True)
     images = {
@@ -243,6 +281,9 @@ def main() -> None:
         target = OUTPUT / name
         image.save(target, format="PNG", optimize=True)
         print(target)
+    open_graph_target = ROOT / "public" / "og-vellox.png"
+    open_graph_cover().save(open_graph_target, format="PNG", optimize=True)
+    print(open_graph_target)
 
 
 if __name__ == "__main__":
