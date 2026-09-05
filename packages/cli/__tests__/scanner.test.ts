@@ -269,15 +269,21 @@ ${'A'.repeat(80)}
 
   it('ignores local placeholder database URIs but reports non-placeholder credentials', () => {
     const directory = fixture();
-    fs.writeFileSync(path.join(directory, '.env.example'), 'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/app\n');
+    fs.writeFileSync(path.join(directory, '.env.example'), [
+      'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/app',
+      'PORTUGUESE_DATABASE_URL=postgresql://usuario:senha@localhost:5432/app',
+      'TEMPLATE_DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db.example.com:5432/app'
+    ].join('\n'));
     const productionUri = ['DATABASE_URL=postgresql://service:', 'real-credential', '@db.example.net:5432/app\n'].join('');
+    const localRealCredential = ['LOCAL_DATABASE_URL=postgresql://postgres:', 'actual-credential-value', '@localhost:5432/app\n'].join('');
     fs.writeFileSync(path.join(directory, '.env.production'), productionUri);
+    fs.writeFileSync(path.join(directory, '.env.local-real'), localRealCredential);
 
     const report = scanProject(directory, 'test');
     const uris = report.findings.filter(item => item.ruleId === 'secret/database-uri');
 
-    expect(uris).toHaveLength(1);
-    expect(uris[0]?.file).toBe('.env.production');
+    expect(uris).toHaveLength(2);
+    expect(uris.map(item => item.file).sort()).toEqual(['.env.local-real', '.env.production']);
   });
 
   it('does not mislabel bounded Promise.all work as sequential execution', () => {
@@ -467,6 +473,27 @@ def reverse():
     expect(findings.filter(item => item.file === 'src/orm.ts')).toHaveLength(2);
     expect(findings.filter(item => item.file === 'src/orm.py')).toHaveLength(2);
     expect(findings.every(item => item.confidence === 'MEDIUM')).toBe(true);
+  });
+
+  it('uses only top-level ORM bounds and recognizes direct unique ID filters', () => {
+    const directory = fixture();
+    fs.writeFileSync(path.join(directory, 'src', 'orm-bounds.ts'), `export async function load(storeId) {
+  const byId = await prisma.store.findMany({ where: { id: storeId } });
+  const nestedLimit = await prisma.task.findMany({
+    select: { executions: { take: 1 } },
+    orderBy: { createdAt: 'asc' }
+  });
+  // @vellox-ignore — the store catalog is intentionally bounded by the business domain.
+  const reviewedCatalog = await prisma.store.findMany({ orderBy: { name: 'asc' } });
+  return { byId, nestedLimit, reviewedCatalog };
+}
+`);
+
+    const findings = scanProject(directory, 'test').findings
+      .filter(item => item.file === 'src/orm-bounds.ts' && item.ruleId === 'query/unbounded-orm-read');
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.line).toBe(3);
   });
 
   it('honors gitignore, velloxignore, config exclusions, and rule overrides', () => {

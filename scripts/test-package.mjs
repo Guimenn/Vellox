@@ -33,7 +33,15 @@ try {
   if (!report.findings.some(item => item.ruleId === 'code/query-in-loop')) throw new Error('Packed CLI missed structural query-loop finding.');
   const gate = spawnSync(executable, ['check', '.'], { cwd: packageDirectory, encoding: 'utf8' });
   if (gate.status !== 1) throw new Error('Packed CLI gate did not fail on the real high-severity finding.');
-  console.log('Packed vellox@' + pack.version + ' installed and passed scan/report/gate smoke tests.');
+  const beforePlan = path.join(packageDirectory, 'before-plan.json');
+  const afterPlan = path.join(packageDirectory, 'after-plan.json');
+  fs.writeFileSync(beforePlan, JSON.stringify({ Plan: { 'Node Type': 'Seq Scan', 'Actual Total Time': 99, 'Actual Rows': 10_000, 'Actual Loops': 1 }, 'Execution Time': 100 }));
+  fs.writeFileSync(afterPlan, JSON.stringify({ Plan: { 'Node Type': 'Index Scan', 'Actual Total Time': 19, 'Actual Rows': 100, 'Actual Loops': 1 }, 'Execution Time': 20 }));
+  const proof = JSON.parse(execFileSync(executable, ['prove', beforePlan, afterPlan, '--format', 'json'], { cwd: packageDirectory, encoding: 'utf8' }));
+  if (proof.verdict !== 'improved' || proof.comparison.executionTimeMs.deltaPercent !== -80) {
+    throw new Error('Packed CLI did not produce the expected measured before/after comparison.');
+  }
+  console.log('Packed vellox@' + pack.version + ' installed and passed scan/report/gate/prove smoke tests.');
   fs.rmSync(tarball, { force: true });
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });

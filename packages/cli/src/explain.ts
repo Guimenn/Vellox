@@ -175,6 +175,7 @@ export function analyzePostgresExplain(document: unknown, target: string, versio
       planNodes: nodes.length,
       planningTimeMs: number(record, 'Planning Time'),
       executionTimeMs: number(record, 'Execution Time', number(root, 'Actual Total Time')),
+      planNodeExecutions: nodes.reduce((total, node) => total + Math.max(1, number(node, 'Actual Loops', 1)), 0),
       sequentialScans: nodes.filter(node => text(node, 'Node Type') === 'Seq Scan').length,
       diskSpills: nodes.filter(node => text(node, 'Sort Space Type').toLowerCase() === 'disk' || /external|disk/i.test(text(node, 'Sort Method'))).length,
       sharedHitBlocks: buffers.hit,

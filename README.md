@@ -11,11 +11,11 @@ Find supported risks, inspect the evidence, and review the action.
 
 [![npm](https://img.shields.io/npm/v/vellox?style=flat-square&label=npx%20vellox&labelColor=070908&color=c8ff53)](https://www.npmjs.com/package/vellox)
 [![CI](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml/badge.svg)](https://github.com/Guimenn/Vellox/actions/workflows/vellox-ci.yml)
-[![tests](https://img.shields.io/badge/tests-191%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
+[![tests](https://img.shields.io/badge/tests-196%20passing-070908?style=flat-square&labelColor=070908&color=c8ff53)](#proof-not-promises)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-070908?style=flat-square&labelColor=070908&color=c8ff53)](./package.json)
 [![license](https://img.shields.io/badge/license-proprietary-070908?style=flat-square&labelColor=070908&color=c8ff53)](./LICENSE)
 
-[Quick start](#quick-start) · [How it works](#one-scan-full-story) · [CLI](#cli-reference) · [Architecture](#architecture) · [Benchmarks](#proof-not-promises)
+[Quick start](#quick-start) · [How it works](#one-scan-full-story) · [CLI](#cli-reference) · [Architecture](#architecture) · [Evidence](#proof-not-promises)
 
 </div>
 
@@ -34,41 +34,62 @@ read locally    explain claim      human decides    enforce policy
 
 ## Quick start
 
-No global install. Run it from the root of the project you want to inspect:
+No global install, account, container, or setup wizard. Do not add Vellox to the project's dependencies for a one-time scan: `npx` uses npm's execution cache without rewriting your `package.json` or lockfile. From the project root, the complete team path is three commands.
+
+### 1. Scan locally
 
 ```bash
-npx vellox
+npx --yes vellox
 ```
 
-Vellox scans the current directory and reports direct or cross-file N+1 database work, sequential loops, repeated linear searches and sorts, quadratic collection growth, unbounded ORM reads, database-specific async fan-out, event-loop blocking, risky SQL, exposed credentials, and missing database indexes. It also records exactly what was analyzed, skipped, parsed into its SQL syntax tree, or handled by the conservative fallback. Every command consumes the same evidence artifact:
+This reports direct or cross-file N+1 database work, sequential loops, repeated linear searches and sorts, quadratic collection growth, unbounded ORM reads, database-specific async fan-out, event-loop blocking, risky SQL, exposed credentials, and missing database indexes. It also records exactly what was analyzed, skipped, parsed into its SQL syntax tree, or handled by the conservative fallback:
 
 ```text
 .vellox/report.json
 ```
 
-Generate SQL only from eligible findings:
+For a one-time diagnosis, stop here. `npx vellox report` optionally turns the evidence into readable Markdown.
+
+### 2. Adopt without inheriting noise
+
+```bash
+npx --yes vellox baseline
+```
+
+Review the current findings first. The baseline records accepted fingerprints so the gate can focus on new risks instead of blocking a mature codebase on day one.
+
+### 3. Protect pull requests
+
+```bash
+npx --yes vellox ci
+```
+
+This creates a GitHub Actions workflow with SARIF upload and the Vellox quality gate. Existing workflows are preserved.
+
+Need a focused workflow instead? These commands remain available:
 
 ```bash
 npx vellox fix
-```
-
-Analyze one query directly:
-
-```bash
 npx vellox scan "SELECT * FROM orders WHERE status LIKE '%pending'"
-```
-
-Analyze an SQL file with one or more statements:
-
-```bash
 npx vellox optimize queries.sql
+npx vellox explain plan.json
+npx vellox prove plans/before plans/after
 ```
 
-Inspect a PostgreSQL JSON execution plan:
+`fix` only generates reviewable SQL suggestions backed by eligible findings. It never rewrites application code or executes SQL.
+
+### Prove a measured change
+
+Export PostgreSQL `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plans before and after an optimization, then compare the recorded evidence locally:
 
 ```bash
-npx vellox explain plan.json
+npx --yes vellox prove plans/before plans/after
+npx --yes vellox prove plans/before plans/after --format markdown --output vellox-proof.md
 ```
+
+Each path can be one JSON file or a directory of JSON samples. Vellox uses medians, labels single-run evidence, reports execution time, buffer reads/hits, node executions, disk spills, and resolved/introduced plan findings, and can return a failing CI exit code with `--fail-on-regression`.
+
+> `vellox prove` only reads exported JSON. PostgreSQL `EXPLAIN ANALYZE` executes the measured statement, so capture plans in a safe representative environment and use at least three comparable runs per side. Vellox cannot verify that the query, data, cache state, hardware, and concurrent load were identical.
 
 > Requires Node.js 20 or newer. The currently published package version is always shown by the npm badge above.
 
@@ -86,7 +107,7 @@ npx vellox explain plan.json
 | **Python** | Project-wide call graph across relative/absolute and multiline imports, aliases, wrappers, namespaces, imported classes, and typed constructor injection; direct/transitive query loops, exact `range`/slice bounds, request-to-raw-SQL flow, quadratic growth, query-aware `asyncio.gather`, and blocking async work |
 | **SQL & ORM** | Auto-detected PostgreSQL/MySQL/SQLite syntax analysis with explicit fallback; Cartesian joins, correlated subqueries, unstable/deep pagination, large `IN`/`OR` predicates, non-sargable filters, unbounded Prisma/Mongoose/Sequelize/SQLAlchemy/Django reads, full-table writes, dynamic SQL, and missing FK indexes |
 | **Infrastructure config** | Floating container images, effective final-stage users, complete Kubernetes CPU/memory policies and privileged workloads, Terraform public database/storage/ingress exposure |
-| **Execution plans** | Actionable PostgreSQL JSON diagnostics for expensive sequential scans, disk spills, cardinality misestimation, nested-loop amplification, and low buffer hit ratios |
+| **Execution plans** | PostgreSQL JSON diagnostics plus measured before/after comparison across execution time, buffers, node executions, disk spills, and resolved or introduced plan findings |
 | **Security** | Supported API tokens, private keys, credential-bearing database URLs with redacted output, and intraprocedural request-data flow into raw SQL sinks without treating normal ORM predicates as injection |
 
 ### Safe by design
@@ -96,6 +117,7 @@ npx vellox explain plan.json
 - **Local by default.** The published CLI needs only Node.js 20+; no Docker, Kubernetes, daemon, database, or account is required.
 - **Configuration evidence, not cloud telemetry.** Infrastructure rules inspect repository manifests; Vellox does not call cloud or cluster APIs or claim measured utilization.
 - **No code execution.** Project files are read as text and the report stays on disk.
+- **Measured comparison stays honest.** `prove` compares exported plan evidence by median and reports measurement limits; it does not connect to PostgreSQL or claim causation from one noisy run.
 - **Redacted credentials.** Secret findings never echo the complete matched value.
 - **Intentional escape hatch.** Use `// @vellox-ignore` for reviewed loops or batch routines.
 - **Confidence is explicit.** Structural certainty and heuristic risk are separate; ambiguous complexity and ORM-volume findings are labeled with medium confidence.
@@ -119,6 +141,8 @@ npx vellox explain plan.json
 | `npx vellox scan . --format json` | Emits the complete machine-readable evidence report |
 | `npx vellox scan . --format sarif` | Produces SARIF for GitHub code scanning |
 | `npx vellox explain <file> --format json` | Diagnoses a PostgreSQL JSON `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plan with measured metrics |
+| `npx vellox prove <before> <after>` | Compares measured PostgreSQL plan files or sample directories without connecting to the database |
+| `npx vellox prove <before> <after> --fail-on-regression` | Returns exit code 1 when median execution time regresses beyond the configured threshold |
 | `npx vellox rules [filter]` | Lists the complete rule catalog with default severity and confidence |
 | `npx vellox ai "<sql>"` | Creates a structured optimization prompt for an AI coding assistant |
 | `npx vellox fix` | Generates SQL only from fixes attached to the current report |
@@ -177,11 +201,13 @@ npx vellox explain plan.json
 | **Schemas** | Prisma, Drizzle, and SQL DDL |
 | **Infrastructure** | Docker/Containerfile, Docker Compose, Kubernetes manifests, and Terraform |
 | **Outputs** | Terminal, JSON, Markdown, SARIF, baselines, and CI exit codes |
-| **Local runtime** | Node.js 20+; no container or background service required |
+| **CLI runtime** | Node.js 20+; no container or background service required |
 
 ## Proof, not promises
 
-The repository currently passes **191 automated tests** (188 TypeScript + 3 Python), including a versioned fully labelled SQL/code precision corpus, SQL syntax-tree and fallback cases, cross-file ESM/CommonJS/Python call graphs, multiline imports, imported callbacks, wrapper aliases, request-to-query dataflow, nested monorepo configs, static-bound and guard dataflow, changed-file/cache behavior, coverage failures, query-specific fan-out, execution-plan diagnostics, CLI safety contracts, stable baselines, schemas, and manifests. The focused 22-case labelled corpus currently measures `1.00` aggregate precision and `1.00` recall for its selected rules; it is a regression gate, not a claim of universal detection.
+The repository currently passes **196 automated tests** (193 TypeScript + 3 Python), including a versioned fully labelled SQL/code precision corpus, SQL syntax-tree and fallback cases, cross-file ESM/CommonJS/Python call graphs, multiline imports, imported callbacks, wrapper aliases, request-to-query dataflow, nested monorepo configs, static-bound and guard dataflow, changed-file/cache behavior, coverage failures, query-specific fan-out, execution-plan diagnostics, measured before/after comparison, CLI safety contracts, stable baselines, schemas, and manifests. The focused 22-case labelled corpus currently measures `1.00` aggregate precision and `1.00` recall for its selected rules; it is a regression gate, not a claim of universal detection.
+
+The npm package `vellox` is the static CLI described above. Runtime agents, the collector, and telemetry adapters in this monorepo remain experimental research modules outside the supported CLI path; no production-overhead claim is made for them.
 
 Reproduce the checks on your machine:
 
@@ -200,8 +226,8 @@ vellox/
 ├── packages/
 │   ├── cli/                 # npx vellox scanner, project call graph, and workflow commands
 │   ├── core/                # bounded telemetry primitives and normalization
-│   ├── agent-node/          # Node.js request and query instrumentation
-│   ├── agent-python/        # FastAPI, Starlette, and SQLAlchemy instrumentation
+│   ├── agent-node/          # experimental Node.js runtime instrumentation
+│   ├── agent-python/        # experimental Python runtime instrumentation
 │   ├── analyzer/            # evidence-backed root-cause engine
 │   ├── cost-engine/         # deterministic FinOps modeling
 │   ├── db-*/                # PostgreSQL, MySQL, MariaDB, MongoDB, Redis, Oracle

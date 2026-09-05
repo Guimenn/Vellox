@@ -6,6 +6,13 @@ const root = process.cwd();
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 if (!html.includes('id="npm-version">npm</span>')) throw new Error('Landing npm fallback must remain registry-neutral.');
 if (!html.includes('https://registry.npmjs.org/vellox/latest')) throw new Error('Landing must resolve the published npm version dynamically.');
+for (const command of ['npx --yes vellox', 'npx --yes vellox baseline', 'npx --yes vellox ci']) {
+  if (!html.includes(`data-copy="${command}"`)) throw new Error('Landing quick path is missing: ' + command);
+}
+if (!html.includes('npx --yes vellox prove plans/before plans/after')) throw new Error('Landing must expose the measured before/after workflow.');
+if (!html.includes('<strong>196</strong>')) throw new Error('Landing test count must match the validated release suite.');
+if (!html.includes('Stop after the first command for a local diagnosis.')) throw new Error('Landing must explain where the zero-setup path ends.');
+if (html.includes('pnpm benchmark')) throw new Error('Landing must not imply an experimental runtime benchmark validates the static CLI.');
 const localAssets = [...html.matchAll(/(?:src|href)="(public\/[^"]+)"/g)].map(match => match[1]);
 const missing = [...new Set(localAssets)].filter(asset => !fs.existsSync(path.join(root, asset)));
 if (missing.length) throw new Error('Missing landing assets: ' + missing.join(', '));

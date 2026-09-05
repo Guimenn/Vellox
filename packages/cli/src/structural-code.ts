@@ -510,6 +510,44 @@ function javascriptContainerText(node: any, ancestors: any[], content: string): 
     : '';
 }
 
+function unwrapJavaScriptExpression(node: any): any {
+  let current = node;
+  while (['ParenthesizedExpression', 'TSAsExpression', 'TSNonNullExpression', 'TSTypeAssertion'].includes(current?.type)) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function javascriptObjectProperty(node: any, names: ReadonlySet<string>): any | undefined {
+  const object = unwrapJavaScriptExpression(node);
+  if (object?.type !== 'ObjectExpression') return undefined;
+  return object.properties?.find((property: any) => {
+    if (property?.type !== 'ObjectProperty' && property?.type !== 'ObjectMethod') return false;
+    const key = property.key;
+    const name = !property.computed && key?.type === 'Identifier'
+      ? key.name
+      : ['StringLiteral', 'NumericLiteral'].includes(key?.type)
+        ? String(key.value)
+        : undefined;
+    return Boolean(name && names.has(name));
+  });
+}
+
+function hasDirectJavaScriptOrmBound(options: any): boolean {
+  return Boolean(javascriptObjectProperty(options, new Set(['limit', 'take'])));
+}
+
+function hasDirectJavaScriptUniqueIdFilter(options: any): boolean {
+  const whereProperty = javascriptObjectProperty(options, new Set(['where']));
+  const idProperty = javascriptObjectProperty(whereProperty?.value, new Set(['_id', 'id']));
+  if (!idProperty || idProperty.type !== 'ObjectProperty') return false;
+  const value = unwrapJavaScriptExpression(idProperty.value);
+  if (!value || ['ArrayExpression', 'NullLiteral'].includes(value.type)) return false;
+  if (value.type !== 'ObjectExpression') return true;
+  const properties = value.properties?.filter((property: any) => property?.type === 'ObjectProperty') || [];
+  return properties.length === 1 && Boolean(javascriptObjectProperty(value, new Set(['equals'])));
+}
+
 function likelyJavaScriptCollection(node: any, content: string): boolean {
   if (node?.type === 'ArrayExpression' || node?.type === 'NewExpression' && callName(node.callee, content) === 'Array') return true;
   const name = callName(node, content).split('.').at(-1) || '';
@@ -521,8 +559,13 @@ function isUnboundedJavaScriptOrmRead(node: any, ancestors: any[], content: stri
   const name = callName(node.callee, content);
   const method = name.split('.').at(-1) || '';
   if (!/^(?:find|findAll|findMany)$/i.test(method)) return false;
+  const options = node.arguments?.[0];
+  if (/^(?:findAll|findMany)$/i.test(method)) {
+    if (hasDirectJavaScriptOrmBound(options) || hasDirectJavaScriptUniqueIdFilter(options)) return false;
+    return true;
+  }
   const container = javascriptContainerText(node, ancestors, content);
-  return !/(?:\b(?:limit|take)\s*:|\.(?:limit|take|slice)\s*\()/i.test(container);
+  return !/\.(?:limit|take|slice)\s*\(/i.test(container);
 }
 
 function sameJavaScriptExpression(left: any, right: any, content: string): boolean {
@@ -856,11 +899,11 @@ export function scanJavaScriptStructure(content: string, relativeFile: string, e
         }
       }
 
-      if (isUnboundedJavaScriptOrmRead(node, ancestors, content)) {
+      if (!ignoredAt(lines, line) && isUnboundedJavaScriptOrmRead(node, ancestors, content)) {
         findings.push(structuralFinding({
           ruleId: 'query/unbounded-orm-read', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'query',
           title: 'ORM collection read has no explicit bound', evidence: sourceLine(content, line),
-          recommendation: 'Add cursor/keyset pagination or a measured take/limit before materializing the result set.',
+          recommendation: 'Add cursor/keyset pagination or a measured take/limit. If the business domain is provably small, document that review with // @vellox-ignore.',
           file: relativeFile, line, metadata: { parser: 'babel', call: name }
         }));
       }
@@ -1460,7 +1503,7 @@ export function scanPythonStructure(content: string, relativeFile: string, exter
         findings.push(structuralFinding({
           ruleId: 'query/unbounded-orm-read', severity: 'MEDIUM', confidence: 'MEDIUM', category: 'query',
           title: 'ORM collection read has no explicit bound', evidence: sourceLine(content, line),
-          recommendation: 'Add cursor/keyset pagination or a measured limit before materializing the result set.',
+          recommendation: 'Add cursor/keyset pagination or a measured limit. If the business domain is provably small, document that review with # @vellox-ignore.',
           file: relativeFile, line, metadata: { parser: 'lezer-python', call: name }
         }));
       }

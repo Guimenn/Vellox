@@ -1,6 +1,6 @@
 {
   "name": "vellox",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Local structural analyzer for JavaScript, TypeScript, Python, and SQL performance risks",
   "bin": {
     "vellox": "dist/bin.js"

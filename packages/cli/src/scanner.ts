@@ -573,10 +573,14 @@ function sequentialLoopSeverity(relativeFile: string): Severity {
 }
 
 function isPlaceholderDatabaseUri(user: string, password: string, host: string): boolean {
-  const localHost = /^(?:localhost|127\.0\.0\.1|::1)(?::\d+)?$/i.test(host);
-  const genericUser = /^(?:admin|dev|mysql|postgres|root|test|user|username)$/i.test(user);
-  const genericPassword = /^(?:admin|changeme|change[_-]?me|dev|development|example\d*|local|mysql|password\d*|postgres|root|secret\d*|test(?:ing)?|user|username)$/i.test(password);
-  return localHost && (genericUser || genericPassword);
+  const placeholderHost = /^(?:localhost|127\.0\.0\.1|::1)(?::\d+)?$/i.test(host)
+    || /(?:^|\.)example\.(?:com|net|org)(?::\d+)?$/i.test(host);
+  const genericUser = /^(?:admin|dev|example\d*|mysql|postgres|root|sample|test|user|user_?name|username|usu[aá]rio)$/i.test(user);
+  const genericPassword = /^(?:admin|change[_-]?me|changeme|dev|development|example\d*|local|mysql|pass|passwd|password\d*|postgres|pwd|root|sample|secret\d*|senha|test(?:ing)?|user|user_?name|username)$/i.test(password);
+  const templateCredential = (value: string): boolean => /^(?:\$\{?[A-Z][A-Z0-9_]*\}?|<[^>]+>|\{\{[^}]+\}\})$/i.test(value);
+  return placeholderHost
+    && (genericUser || templateCredential(user))
+    && (genericPassword || templateCredential(password));
 }
 
 interface ActiveLoop {

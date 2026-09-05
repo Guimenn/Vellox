@@ -47,7 +47,7 @@ describe('PostgreSQL EXPLAIN analysis', () => {
       'explain/nested-loop-amplification',
       'explain/low-buffer-hit-ratio'
     ]));
-    expect(report.metrics).toMatchObject({ planNodes: 3, diskSpills: 1, bufferHitRatioPercent: 5 });
+    expect(report.metrics).toMatchObject({ planNodes: 3, planNodeExecutions: 2_002, diskSpills: 1, bufferHitRatioPercent: 5 });
     expect(JSON.stringify(toSarif(report))).toContain('explain/disk-spill');
   });
 

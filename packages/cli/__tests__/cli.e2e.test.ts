@@ -40,7 +40,11 @@ afterAll(() => {
 
 describe('published CLI behavior', () => {
   it('writes a reusable JSON report and a real Markdown report', () => {
-    execFileSync(process.execPath, [cli, 'scan', fixture], { encoding: 'utf8' });
+    const scanOutput = execFileSync(process.execPath, [cli, 'scan', fixture], { encoding: 'utf8' });
+    expect(scanOutput).toContain('NEXT — REVIEW, ADOPT, PROTECT');
+    expect(scanOutput).toContain('npx --yes vellox report');
+    expect(scanOutput).toContain('npx --yes vellox baseline');
+    expect(scanOutput).toContain('npx --yes vellox ci');
     const reportPath = path.join(fixture, '.vellox', 'report.json');
     expect(fs.existsSync(reportPath)).toBe(true);
     const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
@@ -163,7 +167,7 @@ describe('published CLI behavior', () => {
   it('executes every workflow command documented in the public CLI reference', () => {
     const run = (command: string[], cwd = fixture): string => execFileSync(process.execPath, [cli, ...command], { cwd, encoding: 'utf8' });
 
-    expect(run(['--help'])).toContain('Usage:');
+    expect(run(['--help'])).toContain('Start here — the complete team path:');
     expect(run(['doctor'])).toContain('Node.js');
     expect(run(['discover', fixture])).toContain('PostgreSQL');
     expect(run(['demo'])).toContain('real scanner');
@@ -193,6 +197,18 @@ describe('published CLI behavior', () => {
     expect(run(['explain', planPath])).toContain('sequentialScans: 1');
     expect(JSON.parse(run(['explain', planPath, '--format', 'json'])).metrics.sequentialScans).toBe(1);
 
+    const beforePlanPath = path.join(fixture, 'before-plan.json');
+    const afterPlanPath = path.join(fixture, 'after-plan.json');
+    fs.writeFileSync(beforePlanPath, JSON.stringify({ Plan: { 'Node Type': 'Seq Scan', 'Actual Total Time': 199, 'Actual Rows': 20_000, 'Actual Loops': 1, 'Shared Hit Blocks': 100, 'Shared Read Blocks': 900 }, 'Execution Time': 200 }));
+    fs.writeFileSync(afterPlanPath, JSON.stringify({ Plan: { 'Node Type': 'Index Scan', 'Actual Total Time': 39, 'Actual Rows': 100, 'Actual Loops': 1, 'Shared Hit Blocks': 490, 'Shared Read Blocks': 10 }, 'Execution Time': 40 }));
+    expect(run(['prove', beforePlanPath, afterPlanPath])).toContain('OBSERVED IMPROVEMENT');
+    const proof = JSON.parse(run(['prove', beforePlanPath, afterPlanPath, '--format', 'json']));
+    expect(proof).toMatchObject({ verdict: 'improved', evidenceQuality: 'single-run' });
+    expect(proof.comparison.executionTimeMs.deltaPercent).toBe(-80);
+    const regression = spawnSync(process.execPath, [cli, 'prove', afterPlanPath, beforePlanPath, '--fail-on-regression'], { cwd: fixture, encoding: 'utf8' });
+    expect(regression.status).toBe(1);
+    expect(regression.stdout).toContain('OBSERVED REGRESSION');
+
     const ddlPath = path.join(fixture, 'migration.sql');
     fs.writeFileSync(ddlPath, 'CREATE TABLE child (id UUID, parent_id UUID, FOREIGN KEY (parent_id) REFERENCES parent(id));');
     expect(run(['ddl', ddlPath])).toContain('Foreign key without a supporting index');
@@ -201,10 +217,14 @@ describe('published CLI behavior', () => {
     fs.mkdirSync(path.join(fixture, '.git'), { recursive: true });
     expect(run(['hook', fixture])).toContain('pre-commit');
     expect(fs.readFileSync(path.join(fixture, '.git', 'hooks', 'pre-commit'), 'utf8')).toContain('vellox check');
-    expect(run(['ci', fixture])).toContain('vellox.yml');
+    const ciOutput = run(['ci', fixture]);
+    expect(ciOutput).toContain('vellox.yml');
+    expect(ciOutput).toContain('commit the Vellox workflow and baseline');
 
     const baselinePath = path.join(fixture, '.vellox', 'baseline.json');
-    expect(run(['baseline', fixture, '--output', baselinePath])).toContain('Baseline saved');
+    const baselineOutput = run(['baseline', fixture, '--output', baselinePath]);
+    expect(baselineOutput).toContain('Baseline saved');
+    expect(baselineOutput).toContain('npx --yes vellox ci');
     expect(fs.existsSync(baselinePath)).toBe(true);
 
     run(['scan', fixture]);

@@ -1,0 +1,30 @@
+{
+  "Plan": {
+    "Node Type": "Hash Join",
+    "Plan Rows": 5000,
+    "Actual Rows": 5000,
+    "Actual Loops": 1,
+    "Actual Total Time": 99,
+    "Shared Hit Blocks": 9720,
+    "Shared Read Blocks": 280,
+    "Plans": [
+      {
+        "Node Type": "Index Scan",
+        "Relation Name": "orders",
+        "Plan Rows": 5000,
+        "Actual Rows": 5000,
+        "Actual Loops": 1,
+        "Actual Total Time": 45
+      },
+      {
+        "Node Type": "Hash",
+        "Plan Rows": 10000,
+        "Actual Rows": 10000,
+        "Actual Loops": 1,
+        "Actual Total Time": 30
+      }
+    ]
+  },
+  "Planning Time": 2.5,
+  "Execution Time": 100
+}

@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import { DEFAULT_CONFIG, loadConfig, readReport, resolveFromTarget, writeJson } from './config.js';
 import { analyzePostgresExplain } from './explain.js';
 import { buildMigration, evaluateBudgets, formatMarkdown, formatPretty, formatTop, toSarif } from './formatters.js';
+import { buildProofReport, formatProofMarkdown, formatProofPretty } from './prove.js';
 import { analyzeSqlDocumentDetailed, analyzeSqlQuery, scanProject } from './scanner.js';
 import { filterRules, formatRuleCatalog } from './rules.js';
 import { VelloxBudgets, VelloxConfig, VelloxReport } from './types.js';
@@ -56,7 +57,7 @@ function positionals(afterCommand = true): string[] {
   for (let index = afterCommand ? 1 : 0; index < args.length; index += 1) {
     const value = args[index]!;
     if (value.startsWith('--')) {
-      if (!value.includes('=') && !['--no-write', '--no-cache', '--changed', '--allow-secrets', '--allow-incomplete'].includes(value)) index += 1;
+      if (!value.includes('=') && !['--no-write', '--no-cache', '--changed', '--allow-secrets', '--allow-incomplete', '--fail-on-regression'].includes(value)) index += 1;
       continue;
     }
     if (/^-[a-z]$/i.test(value)) continue;
@@ -217,7 +218,19 @@ function projectScan(target: string): void {
   else if (format === 'pretty') {
     console.log(header());
     console.log(formatPretty(report));
-    if (!hasFlag('--no-write')) console.log('\nReport: ' + reportPathFor(target));
+    if (!hasFlag('--no-write')) {
+      console.log('\nReport: ' + reportPathFor(target));
+      console.log([
+        '',
+        'NEXT — REVIEW, ADOPT, PROTECT',
+        '  1. npx --yes vellox report    Create a readable Markdown report.',
+        '  2. npx --yes vellox baseline  Accept only the current findings you reviewed.',
+        '  3. npx --yes vellox ci        Block new risks in pull requests.'
+      ].join('\n'));
+      if (report.summary.reviewableSqlFixes > 0) {
+        console.log('  Optional: npx --yes vellox fix generates reviewable SQL suggestions; it never edits application code.');
+      }
+    }
   } else throw new Error('Unsupported format "' + format + '". Use pretty, json, or sarif.');
 }
 
@@ -356,6 +369,7 @@ function baseline(target: string): void {
   const outputPath = resolveFromTarget(target, option('--output') || config.baselinePath || DEFAULT_CONFIG.baselinePath!);
   writeJson(outputPath, report);
   console.log('Baseline saved with ' + report.summary.findings + ' finding(s): ' + outputPath);
+  console.log('Next: review and commit the baseline, then run npx --yes vellox ci.');
 }
 
 function demo(): void {
@@ -429,6 +443,18 @@ function explain(filePath?: string): void {
     console.log(header());
     console.log(formatPretty(report));
   } else throw new Error('Unsupported format "' + format + '". Use pretty, json, or sarif.');
+}
+
+function prove(beforePath?: string, afterPath?: string): void {
+  if (!beforePath || !afterPath) throw new Error('Usage: vellox prove <before.json|directory> <after.json|directory>');
+  const threshold = numberOption('--threshold-percent', 5);
+  const report = buildProofReport(beforePath, afterPath, VERSION, threshold);
+  const format = option('--format') || 'pretty';
+  if (format === 'json') writeOutput(JSON.stringify(report, null, 2));
+  else if (format === 'markdown') writeOutput(formatProofMarkdown(report));
+  else if (format === 'pretty') writeOutput(`${header()}\n${formatProofPretty(report)}`);
+  else throw new Error('Unsupported format "' + format + '". Use pretty, json, or markdown.');
+  if (hasFlag('--fail-on-regression') && report.verdict === 'regressed') process.exitCode = 1;
 }
 
 function rules(): void {
@@ -575,15 +601,22 @@ function ci(target: string): void {
   }
   if (fs.existsSync(workflowPath) && fs.readFileSync(workflowPath, 'utf8') === workflow) {
     console.log('Already configured: ' + workflowPath);
+    console.log('Next: commit the Vellox workflow and baseline with your project.');
     return;
   }
   fs.writeFileSync(workflowPath, workflow, 'utf8');
   console.log('Created: ' + workflowPath);
+  console.log('Next: commit the Vellox workflow and baseline with your project.');
 }
 
 function help(): void {
   console.log(header());
   console.log([
+    '',
+    'Start here — the complete team path:',
+    '  npx --yes vellox           Scan locally without adding a project dependency.',
+    '  npx --yes vellox baseline  Accept only reviewed existing findings.',
+    '  npx --yes vellox ci        Block new risks in pull requests.',
     '',
     'Usage:',
     '  vellox [path] [--format pretty|json|sarif] [--output file] [--max-file-bytes N]',
@@ -595,6 +628,7 @@ function help(): void {
     '  vellox report [path] [--report file] [--output report.md]',
     '  vellox top [path] [--report file]',
     '  vellox explain <plan.json> [--format pretty|json|sarif] [--output file]',
+    '  vellox prove <before.json|directory> <after.json|directory> [--format pretty|json|markdown] [--threshold-percent N] [--fail-on-regression]',
     '  vellox rules [filter] [--format pretty|json]',
     '  vellox ddl <migration.sql>',
     '  vellox ai "<sql>" | demo | discover | init | hook | ci | doctor',
@@ -622,6 +656,7 @@ function main(): void {
   if (command === 'demo' || command === '-d') return demo();
   if (['ai', 'prompt', 'ai-prompt', '-p'].includes(command)) return aiPrompt(positionals().join(' '));
   if (['explain', 'plan'].includes(command)) return explain(positionals()[0]);
+  if (['prove', 'compare'].includes(command)) return prove(positionals()[0], positionals()[1]);
   if (command === 'rules') return rules();
   if (['ddl', 'ddl-check'].includes(command)) return ddl(positionals()[0]);
   if (command === 'doctor') return doctor();

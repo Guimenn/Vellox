@@ -28,7 +28,7 @@ export function formatPretty(report: VelloxReport): string {
       `  Coverage:          ${report.coverage.complete ? 'complete' : `incomplete (${report.coverage.issues.length} issue(s): ${report.coverage.filesSkipped} skipped, ${report.coverage.fallbackFiles} fallback)`}`,
       `  Scope:             ${report.coverage.scope === 'changed' ? `changed since ${report.coverage.changedBase}` : 'full project'}`,
       `  Analysis cache:    ${report.coverage.cacheHit ? 'hit' : 'miss'}`,
-      `  SQL AST:           ${report.coverage.sqlAstStatements ?? 0}/${report.coverage.sqlStatements ?? 0} statement(s)`
+      `  SQL query AST:     ${report.coverage.sqlAstStatements ?? 0}/${report.coverage.sqlStatements ?? 0} statement(s)`
     );
     if (report.coverage.issues.length) {
       lines.push('  ANALYSIS COVERAGE');
